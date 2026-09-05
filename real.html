@@ -140,6 +140,7 @@
         vy: 0,
         r: BALL_R,
         age: 0,
+        stillFor: 0,
         railT: 0,
         power,
         contacts: new Set()
@@ -273,6 +274,21 @@
         return false;
       }
       hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
+
+      // 猫盤面の前足付近などで釘に静止した玉を、実機の微振動相当で解放する。
+      if (skin === 'neko') {
+        if (Math.hypot(ball.vx, ball.vy) < 8) {
+          ball.stillFor += dt;
+          if (ball.stillFor >= 1) {
+            const direction = Math.random() < 0.5 ? -1 : 1;
+            ball.vx += direction * (24 + Math.random() * 16);
+            ball.vy += 14;
+            ball.stillFor = 0;
+          }
+        } else {
+          ball.stillFor = 0;
+        }
+      }
 
       // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
       const outDistance = Math.hypot(ball.x - out.x, ball.y - out.y);

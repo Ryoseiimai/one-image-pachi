@@ -19,3 +19,4 @@
 - 返信10 7テイク目音付き(real_take03_cut): 2096330205719941144
 - 返信11 猫合わせ技(real_neko_take01): 2096333273656180786
 - 返信12 犬合わせ技(real_inu_take01): 2096333290001293663
+- 返信13 遊べる版URL: 2096333937786458157 → https://ryoseiimai.github.io/one-image-pachi/ (repo ghp Ryoseiimai/one-image-pachi)
