@@ -51,15 +51,13 @@
     'use strict';
 
     const skins = {
-      kaeru: {image: 'kaeru_pachi_source.png', title: 'かえるぱち', main:'#d52218', accent:'#ffd447', symbol:'#d9271c'},
-      neko: {image: 'neko_pachi_source.png', title: 'ねこぱち', main:'#8d39cf', accent:'#ff6fbd', symbol:'#a331d1'},
-      inu: {image: 'inu_pachi_source.png', title: 'いぬぱち', main:'#1976d2', accent:'#ff8a25', symbol:'#176fc1'}
+      kaeru: {image: 'kaeru_pachi_source.png', title: 'かえるぱち'},
+      neko: {image: 'neko_pachi_source.png', title: 'ねこぱち'},
+      inu: {image: 'inu_pachi_source.png', title: 'いぬぱち'}
     };
-    const params = new URLSearchParams(location.search);
-    const requestedSkin = params.get('skin');
+    const requestedSkin = new URLSearchParams(location.search).get('skin');
     const skinName = Object.hasOwn(skins, requestedSkin) ? requestedSkin : 'kaeru';
     const skin = skins[skinName];
-    const feverMode = params.get('fever') === '1';
 
     const canvas = document.getElementById('game');
     document.title = skin.title;
@@ -80,57 +78,9 @@
     let message = 'ハンドルを回してスタート！';
     let messageTimer = 4;
     let spin = null;
-    let holds = 0;
-    let nextSpinDelay = 0;
+    let flash = 0;
     const balls = [];
-    const lcd = {x:282, y:505, w:460, h:292};
-
-    let audioCtx = null;
-    let masterGain = null;
-    let muted = false;
-
-    function initAudio() {
-      const AudioCtor = window.AudioContext || window.webkitAudioContext;
-      if (!AudioCtor) return;
-      if (!audioCtx) {
-        audioCtx = new AudioCtor();
-        masterGain = audioCtx.createGain();
-        masterGain.gain.value = muted ? 0 : .72;
-        masterGain.connect(audioCtx.destination);
-      }
-      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
-    }
-
-    function tone(freq, duration=.12, type='sine', volume=.08, delay=0, endFreq=freq) {
-      if (!audioCtx || muted || !masterGain) return;
-      const now = audioCtx.currentTime + delay;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = type;
-      osc.frequency.setValueAtTime(Math.max(1, freq), now);
-      osc.frequency.exponentialRampToValueAtTime(Math.max(1, endFreq), now + duration);
-      gain.gain.setValueAtTime(.0001, now);
-      gain.gain.exponentialRampToValueAtTime(volume, now + .012);
-      gain.gain.exponentialRampToValueAtTime(.0001, now + duration);
-      osc.connect(gain); gain.connect(masterGain);
-      osc.start(now); osc.stop(now + duration + .025);
-    }
-
-    function sfx(name) {
-      if (name === 'chime') { tone(1320,.07,'sine',.06); tone(1880,.12,'sine',.045,.065); }
-      if (name === 'stop') { tone(135,.085,'triangle',.07); tone(72,.11,'sine',.045,.015); }
-      if (name === 'reach') { [392,494,622,784].forEach((f,i)=>tone(f,.2,'square',.035,i*.12,f*1.08)); }
-      if (name === 'don') { tone(82,.42,'sine',.18,0,38); tone(48,.5,'triangle',.12,0,30); }
-      if (name === 'fan') { [523,659,784,1047,1319].forEach((f,i)=>tone(f,.42,'square',.055,i*.105,f*1.01)); }
-      if (name === 'pay') { tone(920,.055,'square',.038); tone(1320,.07,'sine',.035,.045); }
-      if (name === 'arp') { [523,659,784,1047].forEach((f,i)=>tone(f,.18,'triangle',.032,i*.13)); }
-    }
-
-    function toggleMute() {
-      initAudio();
-      muted = !muted;
-      if (masterGain) masterGain.gain.value = muted ? 0 : .72;
-    }
+    const symbols = ['🐸', '🌸', '七', '祭', '⭐'];
 
     // 画像内座標に合わせた盤面部品。釘は球の流れが中央へ寄るよう少し傾ける。
     const nails = [];
@@ -177,14 +127,6 @@
     }
 
     canvas.addEventListener('pointerdown', e => {
-      initAudio();
-      const rect = canvas.getBoundingClientRect();
-      const x = (e.clientX - rect.left) * W / rect.width;
-      const y = (e.clientY - rect.top) * H / rect.height;
-      if (x >= 462 && x <= 562 && y >= 44 && y <= 108) {
-        toggleMute();
-        return;
-      }
       canvas.setPointerCapture(e.pointerId);
       setHandleFromPointer(e);
     });
@@ -198,11 +140,6 @@
 
     const keys = {left:false, right:false};
     addEventListener('keydown', e => {
-      initAudio();
-      if (e.key.toLowerCase() === 'm' && !e.repeat) {
-        toggleMute();
-        return;
-      }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
         e.preventDefault();
         keys[e.key === 'ArrowLeft' ? 'left' : 'right'] = true;
@@ -250,77 +187,31 @@
     function enterHeso(index) {
       balls.splice(index, 1);
       stock += 3;
-      sfx('chime');
       message = 'ヘソ入賞！ +3発';
       messageTimer = 2;
       if (!spin) {
-        startSpin();
-      } else if (holds < 4) {
-        holds++;
-        message = `保留 ${holds}個！`;
-      } else {
-        message = '保留満タン！';
+        const win = Math.random() < 1/28;
+        const winner = symbols[(Math.random()*symbols.length)|0];
+        spin = {time:0, duration:2.5, win, winner, stopped:0, result:null};
       }
     }
 
-    function wrapDigit(n) { return ((n - 1 + 9) % 9) + 1; }
-
-    function startSpin() {
-      const win = Math.random() < (feverMode ? 1/3 : 1/60);
-      const left = 1 + (Math.random()*9|0);
-      const reach = win || Math.random() < .34;
-      let result;
-      if (win) {
-        result = [left, left, left];
-      } else if (reach) {
-        const offset = Math.random() < .5 ? -1 : 1;
-        result = [left, wrapDigit(left + offset), left];
-      } else {
-        let center, right;
-        do { center = 1 + (Math.random()*9|0); } while (center === left);
-        do { right = 1 + (Math.random()*9|0); } while (right === left || right === center);
-        result = [left, center, right];
-      }
-      spin = {
-        phase:'spin', time:0, duration:3+Math.random()*2,
-        reachDuration:6+Math.random()*3, win, reach, result,
-        cutIn:reach && Math.random()<.3, stopped:[false,false,false],
-        stopSounds:[false,false,false], round:0, arpClock:0
-      };
-      message = feverMode ? '変動開始！ FEVER 1/3' : '変動開始！';
-      messageTimer = 1.1;
-    }
-
-    function stopReel(index) {
-      if (!spin || spin.stopped[index]) return;
-      spin.stopped[index] = true;
-      if (!spin.stopSounds[index]) {
-        spin.stopSounds[index] = true;
-        sfx('stop');
-      }
-    }
-
-    function finishResult() {
+    function finishSpin() {
       if (!spin) return;
       if (spin.win) {
-        spin.phase = 'jackpotFlash';
-        spin.time = 0;
-        message = '大当たり！';
-        messageTimer = 4;
-        sfx('fan');
+        spin.result = [spin.winner, spin.winner, spin.winner];
+        stock += 200;
+        message = '大当たり！ +200発';
+        messageTimer = 5;
+        flash = 3;
       } else {
-        message = spin.reach ? '惜しい！ ズレ目…' : 'ざんねん…次こそ！';
+        let a = (Math.random()*symbols.length)|0;
+        let b = (Math.random()*symbols.length)|0;
+        let c = (Math.random()*symbols.length)|0;
+        if (a === b && b === c) c = (c+1)%symbols.length;
+        spin.result = [symbols[a], symbols[b], symbols[c]];
+        message = 'ざんねん…次こそ！';
         messageTimer = 2;
-        spin.phase = 'ending';
-        spin.time = 0;
-      }
-    }
-
-    function endSpin() {
-      spin = null;
-      if (holds > 0) {
-        holds--;
-        nextSpinDelay = .55;
       }
     }
 
@@ -338,58 +229,13 @@
 
       windAngle += dt * 3.1;
       messageTimer -= dt;
-
-      if (!spin && nextSpinDelay > 0) {
-        nextSpinDelay -= dt;
-        if (nextSpinDelay <= 0) startSpin();
-      }
+      flash = Math.max(0, flash-dt);
 
       if (spin) {
         spin.time += dt;
-        if (spin.phase === 'spin') {
-          if (spin.time >= spin.duration*.48) stopReel(0);
-          if (spin.time >= spin.duration*.7) stopReel(2);
-          if (spin.reach && spin.time >= spin.duration*.7) {
-            spin.phase = 'reach'; spin.time = 0;
-            message = 'リーチ！'; messageTimer = 2;
-            sfx('reach');
-            if (spin.cutIn) sfx('don');
-          } else if (!spin.reach && spin.time >= spin.duration) {
-            stopReel(1);
-            spin.phase = 'result'; spin.time = 0;
-          }
-        } else if (spin.phase === 'reach') {
-          if (spin.time >= spin.reachDuration) {
-            stopReel(1);
-            spin.phase = 'result'; spin.time = 0;
-          }
-        } else if (spin.phase === 'result' && spin.time >= 1.35) {
-          finishResult();
-        } else if (spin.phase === 'ending' && spin.time >= 1.65) {
-          endSpin();
-        } else if (spin.phase === 'jackpotFlash' && spin.time >= .55) {
-          spin.phase = 'jackpotIntro'; spin.time = 0; spin.arpClock = 0;
-        } else if (spin.phase === 'jackpotIntro') {
-          spin.arpClock -= dt;
-          if (spin.arpClock <= 0) { sfx('arp'); spin.arpClock = .72; }
-          if (spin.time >= 3) {
-            spin.phase = 'rounds'; spin.time = 0; spin.round = 1;
-            stock += 20; sfx('pay');
-          }
-        } else if (spin.phase === 'rounds') {
-          spin.arpClock -= dt;
-          if (spin.arpClock <= 0) { sfx('arp'); spin.arpClock = .72; }
-          if (spin.time >= 2) {
-            if (spin.round < 10) {
-              spin.round++; spin.time = 0; stock += 20; sfx('pay');
-            } else {
-              spin.phase = 'jackpotEnd'; spin.time = 0;
-              message = '大当たり終了！ +200発'; messageTimer = 3;
-            }
-          }
-        } else if (spin.phase === 'jackpotEnd' && spin.time >= 1.6) {
-          endSpin();
-        }
+        spin.stopped = Math.min(3, Math.floor(spin.time/.62));
+        if (spin.time >= spin.duration && !spin.result) finishSpin();
+        if (spin.time >= spin.duration + 1.7) spin = null;
       }
 
       for (let i=balls.length-1; i>=0; i--) {
@@ -474,123 +320,26 @@
     }
 
     function drawReels() {
-      if (!spin) return;
-      const reaching = spin.phase === 'reach';
-      const pulse = .55 + .45*Math.sin(performance.now()/105);
-      const border = reaching ? `rgba(255,35,25,${pulse})` : skin.accent;
-      roundRect(lcd.x,lcd.y,lcd.w,lcd.h,30,'rgba(3,2,8,.83)',border);
-
-      if (reaching && spin.cutIn) {
-        ctx.save();
-        ctx.beginPath();ctx.roundRect(lcd.x+5,lcd.y+5,lcd.w-10,lcd.h-10,25);ctx.clip();
-        ctx.globalAlpha=.74;
-        const zoom=1.15+Math.min(.25,spin.time*.035);
-        const sw=610/zoom, sh=700/zoom;
-        ctx.drawImage(bg,512-sw/2,455,sw,sh,lcd.x,lcd.y,lcd.w,lcd.h);
-        ctx.globalAlpha=1;
-        const hot=ctx.createLinearGradient(0,lcd.y+180,0,lcd.y+286);
-        hot.addColorStop(0,'#fff');hot.addColorStop(.3,skin.accent);hot.addColorStop(1,skin.main);
-        ctx.font='1000 78px "Hiragino Sans",system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
-        ctx.lineWidth=16;ctx.strokeStyle='rgba(35,0,0,.92)';ctx.strokeText('激アツ',512,lcd.y+235);
-        ctx.fillStyle=hot;ctx.fillText('激アツ',512,lcd.y+235);
-        ctx.restore();
-      }
-
-      ctx.fillStyle=reaching?'#ff544c':skin.accent;
-      ctx.font='900 24px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(reaching?'REACH':'CHANCE',512,lcd.y+30);
-
-      const reelY=lcd.y+55, reelW=110, reelH=158, gap=17, startX=lcd.x+48;
+      const boxY=255, size=112, gap=18, startX=326;
+      const active = !!spin;
+      if (!active) return;
+      roundRect(285,218,454,190,30,'rgba(74,6,4,.88)','#ffcf3c');
+      const t=spin.time;
+      let shown;
+      if (spin.result) shown=spin.result;
+      else shown=[0,1,2].map((_,i) => {
+        if (i < spin.stopped) return spin.win ? spin.winner : symbols[(i*2+1)%symbols.length];
+        return symbols[Math.floor(t*14+i*1.7)%symbols.length];
+      });
       for(let i=0;i<3;i++){
-        const x=startX+i*(reelW+gap);
-        roundRect(x,reelY,reelW,reelH,14,'rgba(255,252,239,.95)',skin.accent);
-        ctx.save();
-        ctx.beginPath();ctx.roundRect(x+4,reelY+4,reelW-8,reelH-8,10);ctx.clip();
-        if (spin.stopped[i]) {
-          drawDigit(spin.result[i],x+reelW/2,reelY+reelH/2,72);
-        } else {
-          const speed=reaching&&i===1?3.1:11.5;
-          const travel=(spin.time*speed+i*.31)%1;
-          const base=Math.floor(spin.time*speed+i*3);
-          for(let k=-1;k<=2;k++){
-            const digit=wrapDigit(base+k+1);
-            drawDigit(digit,x+reelW/2,reelY+reelH/2+(k+travel)*92,66);
-          }
-        }
-        ctx.restore();
+        const x=startX+i*(size+gap);
+        roundRect(x,boxY,size,112,16,'#fff8df','#e39b11');
+        ctx.fillStyle=shown[i]==='七'?'#e31916':'#17853c';
+        ctx.font='900 66px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(shown[i],x+size/2,boxY+58);
       }
-      ctx.fillStyle='#fff';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
-      let caption='図 柄 変 動 中';
-      if (reaching) caption='リ ー チ';
-      if (spin.phase==='result') caption=spin.win?'3 つ 揃 い！':'ハ ズ レ';
-      ctx.fillText(caption,512,lcd.y+264);
-    }
-
-    function drawDigit(digit,x,y,size) {
-      ctx.font=`1000 ${size}px ui-rounded,"Hiragino Sans",system-ui`;
-      ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-      ctx.lineWidth=Math.max(7,size*.12);ctx.strokeStyle='#fff';ctx.strokeText(String(digit),x,y);
-      ctx.lineWidth=Math.max(3,size*.045);ctx.strokeStyle=skin.accent;ctx.strokeText(String(digit),x,y);
-      ctx.fillStyle=skin.symbol;ctx.fillText(String(digit),x,y);
-    }
-
-    function drawHolds() {
-      roundRect(377,814,270,65,27,'rgba(5,3,8,.82)',skin.accent);
-      ctx.fillStyle='#fff';ctx.font='800 17px system-ui';ctx.textAlign='right';ctx.textBaseline='middle';ctx.fillText('保留',438,846);
-      for(let i=0;i<4;i++){
-        const x=470+i*46;
-        ctx.beginPath();ctx.arc(x,846,15,0,Math.PI*2);
-        const lit=i<holds;
-        ctx.fillStyle=lit?skin.accent:'#282832';ctx.fill();
-        ctx.strokeStyle=lit?'#fff7bf':'#777';ctx.lineWidth=4;ctx.stroke();
-        if(lit){ctx.beginPath();ctx.arc(x-4,842,4,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();}
-      }
-    }
-
-    function drawMute() {
-      roundRect(462,44,100,64,22,'rgba(18,10,12,.82)',muted?'#888':skin.accent);
-      ctx.fillStyle='#fff';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
-      ctx.fillText(muted?'🔇':'🔊',512,69);
-      ctx.font='700 12px system-ui';ctx.fillText(muted?'OFF':'MUTE',512,94);
-    }
-
-    function drawJackpot() {
-      if (!spin || !['jackpotFlash','jackpotIntro','rounds','jackpotEnd'].includes(spin.phase)) return;
-      if (spin.phase==='jackpotFlash') {
-        ctx.fillStyle=`rgba(255,255,255,${Math.min(1,1-spin.time/.58+.25)})`;ctx.fillRect(0,0,W,H);
-        return;
-      }
-
-      ctx.save();
-      ctx.fillStyle='rgba(15,0,10,.3)';ctx.fillRect(0,0,W,H);
-      ctx.translate(512,760);
-      ctx.rotate(-.025*Math.sin(performance.now()/80));
-      const zoom=1.22+.05*Math.sin(performance.now()/170);
-      ctx.globalAlpha=.88;
-      ctx.drawImage(bg,170,430,684,900,-420*zoom,-575*zoom,840*zoom,1125*zoom);
-      ctx.globalAlpha=1;
-      for(let i=0;i<24;i++){
-        const a=i*Math.PI/12+performance.now()/1500;
-        ctx.beginPath();ctx.moveTo(Math.cos(a)*170,Math.sin(a)*170);
-        ctx.lineTo(Math.cos(a-.035)*760,Math.sin(a-.035)*760);
-        ctx.lineTo(Math.cos(a+.035)*760,Math.sin(a+.035)*760);ctx.closePath();
-        ctx.fillStyle=i%2?`${skin.accent}55`:'rgba(255,255,255,.22)';ctx.fill();
-      }
-      ctx.restore();
-
-      ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-      const big=ctx.createLinearGradient(0,250,0,480);big.addColorStop(0,'#fff');big.addColorStop(.3,skin.accent);big.addColorStop(1,skin.main);
-      ctx.font='1000 118px "Hiragino Sans",system-ui';ctx.lineWidth=24;ctx.strokeStyle='#5a0000';ctx.strokeText('大当たり',512,360);
-      ctx.fillStyle=big;ctx.fillText('大当たり',512,360);
-
-      if (spin.phase==='rounds') {
-        roundRect(347,1055,330,145,35,'rgba(8,2,8,.9)',skin.accent);
-        ctx.fillStyle='#fff';ctx.font='1000 78px ui-rounded,system-ui';ctx.fillText(`${spin.round}R`,512,1110);
-        ctx.fillStyle=skin.accent;ctx.font='900 25px system-ui';ctx.fillText(`払い出し +${spin.round*20} / 200発`,512,1172);
-      } else if (spin.phase==='jackpotEnd') {
-        roundRect(302,1060,420,105,30,'rgba(8,2,8,.9)',skin.accent);
-        ctx.fillStyle='#fff';ctx.font='1000 44px system-ui';ctx.fillText('完 走  +200発',512,1114);
-      }
+      ctx.fillStyle='#ffe568';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+      ctx.fillText(spin.result ? (spin.win?'大 当 た り！':'また挑戦してね') : '抽 選 中 …',512,397);
     }
 
     function drawHeso() {
@@ -656,13 +405,12 @@
 
     function draw() {
       ctx.clearRect(0,0,W,H);
-      ctx.save();
-      if (spin && spin.phase==='reach') {
-        const amount=3.5+2.5*Math.sin(performance.now()/73);
-        ctx.translate((Math.random()-.5)*amount,(Math.random()-.5)*amount);
-      }
       if (bg.complete && bg.naturalWidth) ctx.drawImage(bg,0,0,W,H);
       else { ctx.fillStyle='#efe3b8';ctx.fillRect(0,0,W,H); }
+
+      if (flash>0 && Math.floor(flash*8)%2===0) {
+        ctx.fillStyle='rgba(255,238,40,.22)';ctx.fillRect(0,0,W,H);
+      }
       drawRail();
       drawTitle();
       drawHud();
@@ -672,11 +420,7 @@
       for (const b of balls) drawBall(b);
       drawHandle();
       drawReels();
-      drawHolds();
       drawMessage();
-      drawJackpot();
-      ctx.restore();
-      drawMute();
     }
 
     function frame(now) {
