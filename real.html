@@ -43,6 +43,9 @@
     const recordMode = params.get('record') === '1';
     const bg = new Image();
 
+    window.__events = [];
+    let eventsLogged = false;
+
     const BALL_R = 11;
     const NAIL_R = 4;
     const GRAVITY = 880;
@@ -51,6 +54,15 @@
     let elapsed = 0;
     let fireClock = 0;
     let windAngle = 0;
+
+    function recordEvent(type, x, y) {
+      window.__events.push({
+        t: Number(elapsed.toFixed(4)),
+        type,
+        x: Number(x.toFixed(1)),
+        y: Number(y.toFixed(1))
+      });
+    }
 
     // 金色画素の連結成分から求めた釘頭の重心（液晶・風車・ヘソ・外周金具は除外）。
     const nailCenters = [
@@ -121,8 +133,10 @@
         r: BALL_R,
         age: 0,
         railT: 0,
-        power
+        power,
+        contacts: new Set()
       });
+      recordEvent('launch', rail.p0.x, rail.p0.y);
     }
 
     function hitCircle(ball, px, py, pr, bounce = 0.58) {
@@ -191,7 +205,9 @@
         const distance = Math.max(1, Math.hypot(dx, dy));
         ball.vx += (-dy / distance) * 28 * windmill.dir;
         ball.vy += (dx / distance) * 28 * windmill.dir;
+        return true;
       }
+      return false;
     }
 
     function updateBall(ball, dt) {
@@ -223,20 +239,39 @@
       if (ball.x > right) { ball.x = right; ball.vx = -Math.abs(ball.vx) * 0.58; }
       if (ball.y < top) { ball.y = top; ball.vy = Math.abs(ball.vy) * 0.5; }
 
-      for (const nail of nails) hitCircle(ball, nail.x, nail.y, nail.r, 0.62);
+      const contactsNow = new Set();
+      for (let i = 0; i < nails.length; i++) {
+        const nail = nails[i];
+        if (hitCircle(ball, nail.x, nail.y, nail.r, 0.62)) {
+          const key = `pin-${i}`;
+          contactsNow.add(key);
+          if (!ball.contacts.has(key)) recordEvent('pin', ball.x, ball.y);
+        }
+      }
       hitRect(ball, displayRect);
-      for (const windmill of windmills) hitWindmill(ball, windmill);
+      for (let i = 0; i < windmills.length; i++) {
+        if (hitWindmill(ball, windmills[i])) {
+          const key = `wind-${i}`;
+          contactsNow.add(key);
+          if (!ball.contacts.has(key)) recordEvent('wind', ball.x, ball.y);
+        }
+      }
+      ball.contacts = contactsNow;
 
       // ヘソの開口部だけは筒の円判定を通過させ、入賞玉として回収する。
       const inHesoOpening = ball.x > heso.openingLeft && ball.x < heso.openingRight;
       if (ball.vy > 0 && inHesoOpening && ball.y > 797 && ball.y < 900) {
+        recordEvent('heso', ball.x, ball.y);
         return false;
       }
       hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
 
       // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
       const outDistance = Math.hypot(ball.x - 512, ball.y - 1029);
-      if ((ball.vy > 0 && outDistance < 43) || ball.y > 1117 || ball.age > 19) return false;
+      if ((ball.vy > 0 && outDistance < 43) || ball.y > 1117 || ball.age > 19) {
+        recordEvent('out', ball.x, ball.y);
+        return false;
+      }
       return true;
     }
 
@@ -255,44 +290,69 @@
       for (let i = balls.length - 1; i >= 0; i--) {
         if (!updateBall(balls[i], dt)) balls.splice(i, 1);
       }
+
+      if (recordMode && !eventsLogged && elapsed >= 12) {
+        eventsLogged = true;
+        console.log('EVENTS ' + JSON.stringify(window.__events));
+      }
     }
 
     function drawBall(ball) {
       ctx.save();
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.42)';
-      ctx.shadowBlur = 7;
-      ctx.shadowOffsetX = 3;
-      ctx.shadowOffsetY = 5;
+      // 写真下部の受け皿にある玉に合わせた、ガラス越しの暗いクロム。
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 1.5;
+      ctx.shadowOffsetY = 3;
       const metal = ctx.createRadialGradient(
-        ball.x - ball.r * 0.34,
-        ball.y - ball.r * 0.4,
-        ball.r * 0.04,
-        ball.x + ball.r * 0.1,
-        ball.y + ball.r * 0.12,
-        ball.r * 1.04
+        ball.x - ball.r * 0.28,
+        ball.y - ball.r * 0.42,
+        ball.r * 0.02,
+        ball.x + ball.r * 0.08,
+        ball.y + ball.r * 0.16,
+        ball.r * 1.02
       );
       metal.addColorStop(0, '#ffffff');
-      metal.addColorStop(0.1, '#d8dde0');
-      metal.addColorStop(0.3, '#8c9499');
-      metal.addColorStop(0.58, '#4b5155');
-      metal.addColorStop(0.82, '#252a2d');
-      metal.addColorStop(1, '#101315');
+      metal.addColorStop(0.08, '#dce2e3');
+      metal.addColorStop(0.25, '#747b7d');
+      metal.addColorStop(0.52, '#373c3e');
+      metal.addColorStop(0.76, '#1b2022');
+      metal.addColorStop(0.9, '#090b0c');
+      metal.addColorStop(1, '#313638');
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fillStyle = metal;
       ctx.fill();
       ctx.shadowColor = 'transparent';
-      ctx.strokeStyle = 'rgba(210, 218, 222, 0.62)';
-      ctx.lineWidth = 0.75;
+
+      ctx.save();
+      ctx.clip();
+      const reflectedColor = ctx.createLinearGradient(
+        ball.x - ball.r, ball.y - ball.r,
+        ball.x + ball.r, ball.y + ball.r
+      );
+      reflectedColor.addColorStop(0, 'rgba(151, 24, 15, 0.2)');
+      reflectedColor.addColorStop(0.48, 'rgba(211, 126, 20, 0.07)');
+      reflectedColor.addColorStop(0.78, 'rgba(239, 187, 59, 0.2)');
+      reflectedColor.addColorStop(1, 'rgba(76, 20, 12, 0.12)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = reflectedColor;
+      ctx.fillRect(ball.x - ball.r, ball.y - ball.r, ball.r * 2, ball.r * 2);
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(8, 9, 10, 0.9)';
+      ctx.lineWidth = 1.25;
       ctx.stroke();
       ctx.beginPath();
-      ctx.ellipse(ball.x - 3.6, ball.y - 4.4, 2.3, 1.35, -0.55, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.82)';
+      ctx.ellipse(ball.x - 3.4, ball.y - 4.6, 2.7, 1.35, -0.45, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(ball.x + 1, ball.y + 1, ball.r * 0.72, 0.2, 1.5);
-      ctx.strokeStyle = 'rgba(255,255,255,0.11)';
-      ctx.lineWidth = 1.1;
+      ctx.arc(ball.x, ball.y + 1.3, ball.r * 0.74, 0.18, 2.55);
+      ctx.strokeStyle = 'rgba(207, 146, 57, 0.2)';
+      ctx.lineWidth = 1.2;
       ctx.stroke();
       ctx.restore();
     }
