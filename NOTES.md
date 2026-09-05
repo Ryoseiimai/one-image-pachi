@@ -21,3 +21,4 @@
 - 返信12 犬合わせ技(real_inu_take01): 2096333290001293663
 - 返信13 遊べる版URL: 2096333937786458157 → https://ryoseiimai.github.io/one-image-pachi/ (repo ghp Ryoseiimai/one-image-pachi)
 - 返信14 猫台溜まり修正(real_neko_take04_cut): 2096341796867690953
+- Maokuさん引用コメント 2096341409381187904 → 返信 2096343784707805197・いいね済（Maoku元投稿/コメント・Dziro直近）
