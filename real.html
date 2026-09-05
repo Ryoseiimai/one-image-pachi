@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>かえるぱち・実写盤</title>
   <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=">
-  <link rel="preload" as="image" href="kaeru_real_frame.png">
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -41,6 +40,8 @@
     const params = new URLSearchParams(location.search);
     const debug = params.get('debug') === '1';
     const recordMode = params.get('record') === '1';
+    const requestedSkin = params.get('skin') || 'kaeru';
+    const skin = ['kaeru', 'neko', 'inu'].includes(requestedSkin) ? requestedSkin : 'kaeru';
     const bg = new Image();
 
     window.__events = [];
@@ -64,57 +65,63 @@
       });
     }
 
-    // 金色画素の連結成分から求めた釘頭の重心（液晶・風車・ヘソ・外周金具は除外）。
-    const nailCenters = [
-      [507,150],[539,150],[476,153],[570,155],[602,163],[444,165],[634,169],
-      [413,173],[662,190],[383,191],[355,216],[678,216],[342,250],[689,253],
-      [862,260],[297,271],[734,275],[306,287],[722,291],[273,324],[333,324],
-      [792,326],[699,327],[879,330],[839,331],[289,342],[212,363],[800,369],
-      [885,373],[841,374],[222,378],[788,386],[825,392],[777,401],[242,405],
-      [765,417],[190,418],[891,420],[250,422],[201,434],[753,434],[845,438],
-      [255,443],[798,444],[212,451],[288,456],[823,459],[786,460],[224,472],
-      [877,472],[812,475],[154,478],[725,485],[864,485],[828,487],[763,490],
-      [846,492],[309,494],[248,495],[713,500],[890,501],[160,505],[204,506],
-      [805,508],[320,511],[264,512],[834,512],[782,514],[720,522],[171,525],
-      [217,527],[745,527],[141,531],[912,532],[276,533],[861,533],[804,534],
-      [181,543],[735,547],[792,549],[285,552],[238,553],[690,555],[892,555],
-      [153,556],[724,564],[834,564],[780,565],[248,570],[231,576],[713,579],
-      [770,584],[171,586],[307,591],[259,595],[816,596],[687,598],[215,599],
-      [706,602],[901,602],[279,606],[863,608],[344,610],[319,612],[752,615],
-      [802,619],[699,620],[327,630],[236,631],[190,633],[744,634],[838,635],
-      [693,637],[876,641],[333,649],[251,656],[287,656],[205,657],[742,659],
-      [691,661],[823,664],[862,665],[846,685],[222,687],[805,690],[248,702],
-      [787,710],[854,711],[209,734],[251,753],[773,760],[809,761],[868,761],
-      [889,768],[797,783],[871,787],[829,790],[781,799],[858,809],[398,812],
-      [628,821],[676,822],[716,823],[820,830],[326,842],[276,844],[829,847],
-      [743,849],[693,850],[392,851],[799,853],[634,855],[852,861],[249,865],
-      [826,869],[771,871],[303,873],[356,873],[403,873],[622,877],[665,877],
-      [716,878],[891,879],[278,898],[325,901],[375,901],[646,905],[736,905],
-      [689,906],[785,916],[394,922],[270,923],[628,923],[351,925],[666,927],
-      [707,928],[755,928],[414,958],[610,962],[427,991]
-    ];
-    const nails = nailCenters.map(([x, y]) => ({ x, y, r: NAIL_R }));
+    let nails = [];
+    let windmills = [];
+    let displayRect;
+    let heso;
+    let railPoints = [];
+    let railLengths = [];
+    let railTotalLength = 0;
+    let out;
 
-    const windmills = [
-      { x: 318, y: 758, r: 58, dir: 1 },
-      { x: 704, y: 758, r: 58, dir: -1 }
-    ];
+    function configureGeometry(data) {
+      nails = data.pins.map(([x, y]) => ({ x, y, r: NAIL_R }));
+      displayRect = { x: data.lcd[0], y: data.lcd[1], w: data.lcd[2], h: data.lcd[3] };
+      windmills = data.windmills.map(([x, y, r], index) => ({
+        x, y, r, dir: index % 2 === 0 ? 1 : -1
+      }));
 
-    const displayRect = { x: 356, y: 451, w: 312, h: 286 };
-    const heso = { x: 512, y: 858, r: 72, openingLeft: 472, openingRight: 552 };
+      const [hesoX, hesoY, hesoW, hesoH] = data.heso;
+      const hesoCenterX = hesoX + hesoW / 2;
+      heso = {
+        x: hesoCenterX,
+        y: hesoY + hesoH / 2,
+        r: Math.min(hesoW, hesoH) / 2,
+        openingLeft: hesoCenterX - hesoW * 0.278,
+        openingRight: hesoCenterX + hesoW * 0.278,
+        entryTop: hesoY + hesoH * 0.076,
+        entryBottom: hesoY + hesoH * 0.792
+      };
 
-    const rail = {
-      p0: { x: 191, y: 979 },
-      p1: { x: 111, y: 747 },
-      p2: { x: 103, y: 278 },
-      p3: { x: 246, y: 153 }
-    };
+      // JSONは上端→発射口の順。玉が発射口→上端へ進むよう反転して使う。
+      railPoints = data.rail.slice().reverse().map(([x, y]) => ({ x, y }));
+      railLengths = [0];
+      for (let i = 1; i < railPoints.length; i++) {
+        railLengths.push(railLengths[i - 1] + Math.hypot(
+          railPoints[i].x - railPoints[i - 1].x,
+          railPoints[i].y - railPoints[i - 1].y
+        ));
+      }
+      railTotalLength = railLengths[railLengths.length - 1];
+      out = { x: data.out[0], y: data.out[1], r: 43 };
 
-    function bezierPoint(t) {
-      const u = 1 - t;
+      window.__skin = skin;
+      window.__geometry = data;
+      canvas.dataset.skin = skin;
+    }
+
+    function railPoint(t) {
+      const target = Math.max(0, Math.min(1, t)) * railTotalLength;
+      let segment = 1;
+      while (segment < railLengths.length - 1 && railLengths[segment] < target) segment++;
+      const startLength = railLengths[segment - 1];
+      const segmentLength = railLengths[segment] - startLength || 1;
+      const localT = (target - startLength) / segmentLength;
+      const start = railPoints[segment - 1];
+      const end = railPoints[segment];
       return {
-        x: u*u*u*rail.p0.x + 3*u*u*t*rail.p1.x + 3*u*t*t*rail.p2.x + t*t*t*rail.p3.x,
-        y: u*u*u*rail.p0.y + 3*u*u*t*rail.p1.y + 3*u*t*t*rail.p2.y + t*t*t*rail.p3.y
+        x: start.x + (end.x - start.x) * localT,
+        y: start.y + (end.y - start.y) * localT
       };
     }
 
@@ -125,9 +132,10 @@
     function spawnBall() {
       if (balls.length >= MAX_BALLS) return;
       const power = launchStrength(elapsed) + (Math.random() - 0.5) * 0.025;
+      const launchPoint = railPoints[0];
       balls.push({
-        x: rail.p0.x,
-        y: rail.p0.y,
+        x: launchPoint.x,
+        y: launchPoint.y,
         vx: 0,
         vy: 0,
         r: BALL_R,
@@ -136,7 +144,7 @@
         power,
         contacts: new Set()
       });
-      recordEvent('launch', rail.p0.x, rail.p0.y);
+      recordEvent('launch', launchPoint.x, launchPoint.y);
     }
 
     function hitCircle(ball, px, py, pr, bounce = 0.58) {
@@ -215,7 +223,7 @@
       if (ball.railT < 1) {
         // 発射強度のわずかな揺らぎはレールを上る速度と盤面への放出速度に反映。
         ball.railT = Math.min(1, ball.railT + dt * (0.68 + ball.power * 0.2));
-        const point = bezierPoint(ball.railT);
+        const point = railPoint(ball.railT);
         ball.x = point.x;
         ball.y = point.y;
         if (ball.railT === 1) {
@@ -260,15 +268,15 @@
 
       // ヘソの開口部だけは筒の円判定を通過させ、入賞玉として回収する。
       const inHesoOpening = ball.x > heso.openingLeft && ball.x < heso.openingRight;
-      if (ball.vy > 0 && inHesoOpening && ball.y > 797 && ball.y < 900) {
+      if (ball.vy > 0 && inHesoOpening && ball.y > heso.entryTop && ball.y < heso.entryBottom) {
         recordEvent('heso', ball.x, ball.y);
         return false;
       }
       hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
 
       // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
-      const outDistance = Math.hypot(ball.x - 512, ball.y - 1029);
-      if ((ball.vy > 0 && outDistance < 43) || ball.y > 1117 || ball.age > 19) {
+      const outDistance = Math.hypot(ball.x - out.x, ball.y - out.y);
+      if ((ball.vy > 0 && outDistance < out.r) || ball.y > out.y + 88 || ball.age > 19) {
         recordEvent('out', ball.x, ball.y);
         return false;
       }
@@ -400,7 +408,7 @@
       ctx.setLineDash([15, 10]);
       ctx.beginPath();
       for (let i = 0; i <= 80; i++) {
-        const point = bezierPoint(i / 80);
+        const point = railPoint(i / 80);
         if (i === 0) ctx.moveTo(point.x, point.y);
         else ctx.lineTo(point.x, point.y);
       }
@@ -423,6 +431,10 @@
       ctx.strokeStyle = '#ff7a00';
       ctx.beginPath();
       ctx.arc(heso.x, heso.y, heso.r + BALL_R, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(out.x, out.y, out.r, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -471,14 +483,23 @@
       started = true;
       previous = performance.now();
       draw();
+      canvas.dataset.ready = '1';
       requestAnimationFrame(frame);
     }
 
-    bg.addEventListener('load', () => {
-      bg.decode().then(start, start);
-    }, { once: true });
-    bg.src = 'kaeru_real_frame.png';
-    if (bg.complete && bg.naturalWidth > 0) bg.decode().then(start, start);
+    bg.src = `${skin}_real_frame.png`;
+    const imageReady = bg.decode();
+    const geometryReady = fetch(`pins_${skin}.json`).then(response => {
+      if (!response.ok) throw new Error(`pins_${skin}.json: HTTP ${response.status}`);
+      return response.json();
+    });
+
+    Promise.all([imageReady, geometryReady]).then(([, geometry]) => {
+      configureGeometry(geometry);
+      start();
+    }).catch(error => {
+      console.error('Failed to initialize real pachinko:', error);
+    });
   })();
   </script>
 </body>
