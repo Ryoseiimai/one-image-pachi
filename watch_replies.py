@@ -98,6 +98,8 @@ for tid in quote_like_ids:
         if t["id"] in seen_replies:
             continue
         seen_replies.add(t["id"])
+        if t.get("author_id") == "1372999611242008582":
+            continue  # 自分の投稿（スレッド内リンク）は通知しない
         print(f"QUOTE @{users.get(t['author_id'], '?')} ({t['id']}): {t['text'].replace(chr(10), ' ')[:200]}", flush=True)
 save_json(SEEN, sorted(seen_replies))
 

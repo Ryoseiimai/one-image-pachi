@@ -26,3 +26,4 @@
 - いいね返し: @gu1496(みりん屋さん) 直近投稿 2096370536670724358 にいいね
 - SPリーチ: 通常Codex版=index_codex_reach.html／Astra版(採用)=index.html(astra_reach/由来)。比較 shots/reach_vs.png
 - 新規投稿 ねこぱちリーチ演出(astra_reach_fish_cut): 2096380759150080292 → URLリプ 2096380760655802400
+- いいね返し: @HBKmax2 直近投稿 2096360159048327298（3投稿にいいねくれた）
