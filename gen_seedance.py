@@ -23,7 +23,9 @@ import argparse
 import base64
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -37,6 +39,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 POLL_INTERVAL_SEC = 10
 MAX_POLL_SECONDS = 600  # 10 minutes
+MAX_LONG_EDGE_PX = 1536  # resize reference images with a longer edge than this
 
 PROMPT_TEMPLATE = (
     "@Image1 is the entire pachinko machine board and must stay fixed as the "
@@ -61,12 +64,22 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Seedance 1.5 Pro image-to-video generator for pachinko board reels."
     )
-    parser.add_argument("image_path", help="Path to the reference source image (png).")
+    parser.add_argument(
+        "image_path",
+        nargs="+",
+        help="Path(s) to reference image(s), in @Image1/@Image2/... order.",
+    )
     parser.add_argument("output_path", help="Path to save the generated mp4.")
     parser.add_argument(
         "--animal",
         default="frog",
-        help='Animal name to substitute into the prompt (default: "frog").',
+        help='Animal name to substitute into the default prompt template (default: "frog"). '
+        "Ignored if --prompt is given.",
+    )
+    parser.add_argument(
+        "--prompt",
+        default=None,
+        help="Full custom prompt text overriding the animal template.",
     )
     return parser.parse_args()
 
@@ -115,6 +128,44 @@ def api_request(method, url, api_key, body=None):
         return None, {"network_error": str(e)}
 
 
+def resize_if_needed(image_path, tmp_dir):
+    """If the image's longer edge exceeds MAX_LONG_EDGE_PX, resize a copy
+    with sips (macOS built-in) and return the copy's path; otherwise return
+    the original path unchanged."""
+    probe = subprocess.run(
+        ["sips", "-g", "pixelWidth", "-g", "pixelHeight", image_path],
+        capture_output=True, text=True, check=True,
+    )
+    width = height = None
+    for line in probe.stdout.splitlines():
+        line = line.strip()
+        if line.startswith("pixelWidth:"):
+            width = int(line.split(":")[1].strip())
+        elif line.startswith("pixelHeight:"):
+            height = int(line.split(":")[1].strip())
+
+    if width is None or height is None or max(width, height) <= MAX_LONG_EDGE_PX:
+        return image_path
+
+    basename = os.path.basename(image_path)
+    resized_path = os.path.join(tmp_dir, f"resized_{basename}")
+    with open(image_path, "rb") as src, open(resized_path, "wb") as dst:
+        dst.write(src.read())
+    subprocess.run(
+        ["sips", "-Z", str(MAX_LONG_EDGE_PX), resized_path],
+        capture_output=True, text=True, check=True,
+    )
+    print(f"Resized {image_path} ({width}x{height}) -> {resized_path} (long edge <= {MAX_LONG_EDGE_PX}px)")
+    return resized_path
+
+
+def mime_type_for(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in (".jpg", ".jpeg"):
+        return "image/jpeg"
+    return "image/png"
+
+
 def load_image_b64(image_path):
     if not os.path.exists(image_path):
         print(f"ERROR: image not found: {image_path}", file=sys.stderr)
@@ -123,16 +174,31 @@ def load_image_b64(image_path):
         return base64.b64encode(f.read()).decode("ascii")
 
 
-def create_task(api_key, image_b64, duration, prompt):
+def build_image_content_parts(image_paths, tmp_dir):
+    """ModelArk requires a `role` field on each image content part when more
+    than one image is supplied (single-image calls work without it, per
+    tomori_talk.py). All reference images here are used as style/structure
+    references rather than a first/last frame, so role=reference_image."""
+    parts = []
+    multiple = len(image_paths) > 1
+    for image_path in image_paths:
+        prepared_path = resize_if_needed(image_path, tmp_dir)
+        image_b64 = load_image_b64(prepared_path)
+        mime = mime_type_for(prepared_path)
+        part = {
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{image_b64}"},
+        }
+        if multiple:
+            part["role"] = "reference_image"
+        parts.append(part)
+    return parts
+
+
+def create_task(api_key, image_content_parts, duration, prompt):
     body = {
         "model": MODEL_ID,
-        "content": [
-            {"type": "text", "text": prompt},
-            {
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{image_b64}"},
-            },
-        ],
+        "content": [{"type": "text", "text": prompt}] + image_content_parts,
         "resolution": "720p",
         "ratio": "9:16",
         "duration": duration,
@@ -163,14 +229,14 @@ def print_error_body(status, resp, api_key):
     print(scrub(dumped, api_key), file=sys.stderr)
 
 
-def create_task_with_duration_fallback(api_key, image_b64, prompt):
+def create_task_with_duration_fallback(api_key, image_content_parts, prompt):
     """Try each candidate duration in order. Only move to a shorter duration
     when the failure looks duration-related; any other error type aborts
     immediately so we don't mask a real (non-duration) problem."""
     status, resp = None, None
     for duration in DURATION_CANDIDATES:
         print(f"Creating video generation task (duration={duration}s)...")
-        status, resp = create_task(api_key, image_b64, duration, prompt)
+        status, resp = create_task(api_key, image_content_parts, duration, prompt)
         if status == 200 and isinstance(resp, dict) and "id" in resp:
             print(f"Task created with duration={duration}s")
             return status, resp, duration
@@ -186,12 +252,16 @@ def create_task_with_duration_fallback(api_key, image_b64, prompt):
 
 def main():
     args = parse_args()
-    prompt = PROMPT_TEMPLATE.format(animal=args.animal)
+    prompt = args.prompt if args.prompt else PROMPT_TEMPLATE.format(animal=args.animal)
 
     api_key = load_api_key()
-    image_b64 = load_image_b64(args.image_path)
 
-    status, resp, used_duration = create_task_with_duration_fallback(api_key, image_b64, prompt)
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        image_content_parts = build_image_content_parts(args.image_path, tmp_dir)
+
+        status, resp, used_duration = create_task_with_duration_fallback(
+            api_key, image_content_parts, prompt
+        )
     if used_duration is None:
         print("ERROR: task creation failed for all attempted durations.", file=sys.stderr)
         print_error_body(status, resp, api_key)
