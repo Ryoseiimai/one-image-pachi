@@ -140,15 +140,15 @@
         vy: 0,
         r: BALL_R,
         age: 0,
-        stillFor: 0,
         railT: 0,
         power,
+        motionHistory: [],
         contacts: new Set()
       });
       recordEvent('launch', launchPoint.x, launchPoint.y);
     }
 
-    function hitCircle(ball, px, py, pr, bounce = 0.58) {
+    function hitCircle(ball, px, py, pr, bounce = 0.58, angleJitterDegrees = 0) {
       const dx = ball.x - px;
       const dy = ball.y - py;
       const minDistance = ball.r + pr;
@@ -164,7 +164,15 @@
       if (approach < 0) {
         ball.vx -= (1 + bounce) * approach * nx;
         ball.vy -= (1 + bounce) * approach * ny;
-        ball.vx += (Math.random() - 0.5) * 12;
+        if (angleJitterDegrees > 0) {
+          const angle = (Math.random() * 2 - 1) * angleJitterDegrees * Math.PI / 180;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const vx = ball.vx;
+          const vy = ball.vy;
+          ball.vx = vx * cos - vy * sin;
+          ball.vy = vx * sin + vy * cos;
+        }
       }
       return true;
     }
@@ -251,7 +259,7 @@
       const contactsNow = new Set();
       for (let i = 0; i < nails.length; i++) {
         const nail = nails[i];
-        if (hitCircle(ball, nail.x, nail.y, nail.r, 0.62)) {
+        if (hitCircle(ball, nail.x, nail.y, nail.r, 0.62, 3)) {
           const key = `pin-${i}`;
           contactsNow.add(key);
           if (!ball.contacts.has(key)) recordEvent('pin', ball.x, ball.y);
@@ -275,19 +283,19 @@
       }
       hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
 
-      // 猫盤面の前足付近などで釘に静止した玉を、実機の微振動相当で解放する。
-      if (skin === 'neko') {
-        if (Math.hypot(ball.vx, ball.vy) < 8) {
-          ball.stillFor += dt;
-          if (ball.stillFor >= 1) {
-            const direction = Math.random() < 0.5 ? -1 : 1;
-            ball.vx += direction * (24 + Math.random() * 16);
-            ball.vy += 14;
-            ball.stillFor = 0;
-          }
-        } else {
-          ball.stillFor = 0;
-        }
+      // 1.5秒前から12px未満しか動いていない玉は、見えない回収路へ落ちた扱いにする。
+      ball.motionHistory.push({ t: elapsed, x: ball.x, y: ball.y });
+      const movementCutoff = elapsed - 1.5;
+      while (ball.motionHistory.length > 1 && ball.motionHistory[1].t <= movementCutoff) {
+        ball.motionHistory.shift();
+      }
+      const previousPosition = ball.motionHistory[0];
+      if (
+        previousPosition.t <= movementCutoff
+        && Math.hypot(ball.x - previousPosition.x, ball.y - previousPosition.y) < 12
+      ) {
+        recordEvent('out', ball.x, ball.y);
+        return false;
       }
 
       // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
