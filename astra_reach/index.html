@@ -302,6 +302,7 @@
       const reach = !!forced || win || Math.random() < .34;
       // 全回転 is selected on 10% of winning spins, never on an ordinary loss.
       const fullRotation = !forced && win && Math.random() < .1;
+      // Winning reaches: 10% premium + 90% × 50% regular SP = 55% development.
       const develops = reach && (!!forced || fullRotation || feverMode || Math.random() < (win ? .5 : .55));
       const story = develops ? (forced || (fullRotation ? 'zenkaiten' : Math.random() < .5 ? 'fish' : 'punch')) : null;
       let result;
