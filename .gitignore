@@ -1,0 +1,15 @@
+*.mp4
+*.webm
+*.wav
+video_tmp/
+video_tmp2/
+video_tmp3/
+video_tmp3_tiles/
+video_neko_qm7ywuy7/
+shots/
+AI_Logs/
+seen_replies.json
+watch_replies.err
+events*.json
+ref/
+__pycache__/
