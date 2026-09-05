@@ -24,3 +24,5 @@
 - Maokuさん引用コメント 2096341409381187904 → 返信 2096343784707805197・いいね済（Maoku元投稿/コメント・Dziro直近）
 - 返信15 演出付き遊べる版(enshutsu_take01_cut): 2096363070763544678
 - いいね返し: @gu1496(みりん屋さん) 直近投稿 2096370536670724358 にいいね
+- SPリーチ: 通常Codex版=index_codex_reach.html／Astra版(採用)=index.html(astra_reach/由来)。比較 shots/reach_vs.png
+- 新規投稿 ねこぱちリーチ演出(astra_reach_fish_cut): 2096380759150080292 → URLリプ 2096380760655802400
