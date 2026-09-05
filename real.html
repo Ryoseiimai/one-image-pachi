@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>かえるぱち・実写盤</title>
   <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=">
+  <link rel="preload" as="image" href="kaeru_real_frame.png">
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -41,9 +42,9 @@
     const debug = params.get('debug') === '1';
     const recordMode = params.get('record') === '1';
     const bg = new Image();
-    bg.src = 'kaeru_real_frame.png';
 
     const BALL_R = 11;
+    const NAIL_R = 4;
     const GRAVITY = 880;
     const MAX_BALLS = 82;
     const balls = [];
@@ -51,59 +52,44 @@
     let fireClock = 0;
     let windAngle = 0;
 
-    // 写真の真鍮色の釘頭を目印に、画像座標で手置きした当たり判定。
-    const nails = [];
-    const row = (y, xs, r = 6.5) => xs.forEach(x => nails.push({ x, y, r }));
-
-    // 上部の放射列。カエルの輪郭を避けながら左右へ流す。
-    row(153, [476, 508, 539]);
-    row(169, [444, 568]);
-    row(188, [414, 600]);
-    row(213, [383, 632]);
-    row(247, [354, 660]);
-    row(282, [326, 688]);
-    row(321, [304, 710]);
-    row(362, [333, 695]);
-
-    // 液晶の左右を下へ導く釘列。
-    [
-      [194,474],[215,501],[238,529],[263,557],[286,587],[308,619],[331,649],
-      [174,520],[195,551],[219,580],[244,610],[270,639],[299,668],[332,690],
-      [155,574],[180,603],[207,632],[237,660],[270,685],[309,706],
-      [830,474],[809,501],[786,529],[761,557],[738,587],[716,619],[693,649],
-      [850,520],[829,551],[805,580],[780,610],[754,639],[725,668],[692,690],
-      [869,574],[844,603],[817,632],[787,660],[754,685],[715,706]
-    ].forEach(([x, y]) => nails.push({ x, y, r: 6.5 }));
-
-    // 風車周辺から中央下部へ集まる放射状の釘列。
-    row(704, [223, 260, 352, 386, 638, 672, 764, 801]);
-    row(733, [196, 235, 278, 372, 407, 617, 652, 746, 789, 828]);
-    row(770, [183, 224, 263, 368, 401, 623, 656, 761, 800, 841]);
-    row(807, [192, 233, 274, 349, 389, 635, 675, 750, 791, 832]);
-    row(844, [211, 252, 294, 337, 382, 642, 687, 730, 772, 813]);
-    row(879, [231, 273, 316, 359, 405, 619, 665, 708, 751, 793]);
-    row(914, [256, 300, 344, 390, 438, 586, 634, 680, 724, 768]);
-    row(948, [287, 334, 381, 430, 478, 546, 594, 643, 690, 737]);
-    row(981, [324, 374, 425, 476, 548, 599, 650, 700]);
-
-    // ヘソ上の命釘2本。
-    nails.push(
-      { x: 482, y: 803, r: 7.5, life: true },
-      { x: 542, y: 803, r: 7.5, life: true }
-    );
+    // 金色画素の連結成分から求めた釘頭の重心（液晶・風車・ヘソ・外周金具は除外）。
+    const nailCenters = [
+      [507,150],[539,150],[476,153],[570,155],[602,163],[444,165],[634,169],
+      [413,173],[662,190],[383,191],[355,216],[678,216],[342,250],[689,253],
+      [862,260],[297,271],[734,275],[306,287],[722,291],[273,324],[333,324],
+      [792,326],[699,327],[879,330],[839,331],[289,342],[212,363],[800,369],
+      [885,373],[841,374],[222,378],[788,386],[825,392],[777,401],[242,405],
+      [765,417],[190,418],[891,420],[250,422],[201,434],[753,434],[845,438],
+      [255,443],[798,444],[212,451],[288,456],[823,459],[786,460],[224,472],
+      [877,472],[812,475],[154,478],[725,485],[864,485],[828,487],[763,490],
+      [846,492],[309,494],[248,495],[713,500],[890,501],[160,505],[204,506],
+      [805,508],[320,511],[264,512],[834,512],[782,514],[720,522],[171,525],
+      [217,527],[745,527],[141,531],[912,532],[276,533],[861,533],[804,534],
+      [181,543],[735,547],[792,549],[285,552],[238,553],[690,555],[892,555],
+      [153,556],[724,564],[834,564],[780,565],[248,570],[231,576],[713,579],
+      [770,584],[171,586],[307,591],[259,595],[816,596],[687,598],[215,599],
+      [706,602],[901,602],[279,606],[863,608],[344,610],[319,612],[752,615],
+      [802,619],[699,620],[327,630],[236,631],[190,633],[744,634],[838,635],
+      [693,637],[876,641],[333,649],[251,656],[287,656],[205,657],[742,659],
+      [691,661],[823,664],[862,665],[846,685],[222,687],[805,690],[248,702],
+      [787,710],[854,711],[209,734],[251,753],[773,760],[809,761],[868,761],
+      [889,768],[797,783],[871,787],[829,790],[781,799],[858,809],[398,812],
+      [628,821],[676,822],[716,823],[820,830],[326,842],[276,844],[829,847],
+      [743,849],[693,850],[392,851],[799,853],[634,855],[852,861],[249,865],
+      [826,869],[771,871],[303,873],[356,873],[403,873],[622,877],[665,877],
+      [716,878],[891,879],[278,898],[325,901],[375,901],[646,905],[736,905],
+      [689,906],[785,916],[394,922],[270,923],[628,923],[351,925],[666,927],
+      [707,928],[755,928],[414,958],[610,962],[427,991]
+    ];
+    const nails = nailCenters.map(([x, y]) => ({ x, y, r: NAIL_R }));
 
     const windmills = [
-      { x: 318, y: 758, r: 39, dir: 1 },
-      { x: 704, y: 758, r: 39, dir: -1 }
+      { x: 318, y: 758, r: 58, dir: 1 },
+      { x: 704, y: 758, r: 58, dir: -1 }
     ];
 
-    // 液晶まわりの透明枠。写真の表示部へ玉が潜り込まないための線分。
-    const guards = [
-      [377, 458, 647, 458],
-      [365, 471, 365, 681],
-      [659, 471, 659, 681],
-      [385, 704, 639, 704]
-    ];
+    const displayRect = { x: 356, y: 451, w: 312, h: 286 };
+    const heso = { x: 512, y: 858, r: 72, openingLeft: 472, openingRight: 552 };
 
     const rail = {
       p0: { x: 191, y: 979 },
@@ -168,19 +154,43 @@
       return hitCircle(ball, x1 + sx * t, y1 + sy * t, 5, bounce);
     }
 
+    function hitRect(ball, rect, bounce = 0.54) {
+      const left = rect.x;
+      const right = rect.x + rect.w;
+      const top = rect.y;
+      const bottom = rect.y + rect.h;
+      const nearestX = Math.max(left, Math.min(right, ball.x));
+      const nearestY = Math.max(top, Math.min(bottom, ball.y));
+      const outside = ball.x < left || ball.x > right || ball.y < top || ball.y > bottom;
+
+      if (outside) return hitCircle(ball, nearestX, nearestY, 0, bounce);
+
+      const sides = [
+        { distance: ball.x - left, nx: -1, ny: 0, x: left - ball.r, y: ball.y },
+        { distance: right - ball.x, nx: 1, ny: 0, x: right + ball.r, y: ball.y },
+        { distance: ball.y - top, nx: 0, ny: -1, x: ball.x, y: top - ball.r },
+        { distance: bottom - ball.y, nx: 0, ny: 1, x: ball.x, y: bottom + ball.r }
+      ];
+      const side = sides.reduce((closest, candidate) =>
+        candidate.distance < closest.distance ? candidate : closest
+      );
+      ball.x = side.x;
+      ball.y = side.y;
+      const approach = ball.vx * side.nx + ball.vy * side.ny;
+      if (approach < 0) {
+        ball.vx -= (1 + bounce) * approach * side.nx;
+        ball.vy -= (1 + bounce) * approach * side.ny;
+      }
+      return true;
+    }
+
     function hitWindmill(ball, windmill) {
-      hitCircle(ball, windmill.x, windmill.y, 13, 0.62);
-      const rotation = windAngle * windmill.dir;
-      for (let arm = 0; arm < 5; arm++) {
-        const angle = rotation + arm * Math.PI * 0.4;
-        for (let d = 20; d <= windmill.r; d += 10) {
-          const x = windmill.x + Math.cos(angle) * d;
-          const y = windmill.y + Math.sin(angle) * d;
-          if (hitCircle(ball, x, y, 7, 0.62)) {
-            ball.vx += -Math.sin(angle) * 28 * windmill.dir;
-            ball.vy += Math.cos(angle) * 28 * windmill.dir;
-          }
-        }
+      if (hitCircle(ball, windmill.x, windmill.y, windmill.r, 0.62)) {
+        const dx = ball.x - windmill.x;
+        const dy = ball.y - windmill.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        ball.vx += (-dy / distance) * 28 * windmill.dir;
+        ball.vy += (dx / distance) * 28 * windmill.dir;
       }
     }
 
@@ -214,13 +224,15 @@
       if (ball.y < top) { ball.y = top; ball.vy = Math.abs(ball.vy) * 0.5; }
 
       for (const nail of nails) hitCircle(ball, nail.x, nail.y, nail.r, 0.62);
-      for (const guard of guards) hitSegment(ball, ...guard);
+      hitRect(ball, displayRect);
       for (const windmill of windmills) hitWindmill(ball, windmill);
 
-      // 写真中央の黒いヘソ開口部。
-      if (ball.vy > 0 && ball.y > 811 && ball.y < 870 && ball.x > 468 && ball.x < 556) {
+      // ヘソの開口部だけは筒の円判定を通過させ、入賞玉として回収する。
+      const inHesoOpening = ball.x > heso.openingLeft && ball.x < heso.openingRight;
+      if (ball.vy > 0 && inHesoOpening && ball.y > 797 && ball.y < 900) {
         return false;
       }
+      hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
 
       // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
       const outDistance = Math.hypot(ball.x - 512, ball.y - 1029);
@@ -252,30 +264,36 @@
       ctx.shadowOffsetX = 3;
       ctx.shadowOffsetY = 5;
       const metal = ctx.createRadialGradient(
-        ball.x - ball.r * 0.38,
-        ball.y - ball.r * 0.43,
-        ball.r * 0.07,
-        ball.x,
-        ball.y,
-        ball.r
+        ball.x - ball.r * 0.34,
+        ball.y - ball.r * 0.4,
+        ball.r * 0.04,
+        ball.x + ball.r * 0.1,
+        ball.y + ball.r * 0.12,
+        ball.r * 1.04
       );
       metal.addColorStop(0, '#ffffff');
-      metal.addColorStop(0.16, '#e9eef1');
-      metal.addColorStop(0.43, '#aab2b8');
-      metal.addColorStop(0.72, '#626a70');
-      metal.addColorStop(1, '#202529');
+      metal.addColorStop(0.1, '#d8dde0');
+      metal.addColorStop(0.3, '#8c9499');
+      metal.addColorStop(0.58, '#4b5155');
+      metal.addColorStop(0.82, '#252a2d');
+      metal.addColorStop(1, '#101315');
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
       ctx.fillStyle = metal;
       ctx.fill();
       ctx.shadowColor = 'transparent';
-      ctx.strokeStyle = 'rgba(245, 250, 252, 0.72)';
-      ctx.lineWidth = 0.9;
+      ctx.strokeStyle = 'rgba(210, 218, 222, 0.62)';
+      ctx.lineWidth = 0.75;
       ctx.stroke();
       ctx.beginPath();
-      ctx.ellipse(ball.x - 3.8, ball.y - 4.6, 2.6, 1.7, -0.55, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.ellipse(ball.x - 3.6, ball.y - 4.4, 2.3, 1.35, -0.55, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.82)';
       ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ball.x + 1, ball.y + 1, ball.r * 0.72, 0.2, 1.5);
+      ctx.strokeStyle = 'rgba(255,255,255,0.11)';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -306,12 +324,16 @@
 
     function drawDebug() {
       ctx.save();
-      ctx.globalAlpha = 0.53;
       for (const nail of nails) {
         ctx.beginPath();
         ctx.arc(nail.x, nail.y, nail.r + BALL_R, 0, Math.PI * 2);
-        ctx.fillStyle = nail.life ? '#ff3b30' : '#00e5ff';
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.12)';
         ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.92)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(nail.x - 1, nail.y - 1, 2, 2);
       }
       ctx.strokeStyle = '#00ff7f';
       ctx.lineWidth = 6;
@@ -324,13 +346,24 @@
       }
       ctx.stroke();
       ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ff2d9a';
+      ctx.strokeRect(
+        displayRect.x - BALL_R,
+        displayRect.y - BALL_R,
+        displayRect.w + BALL_R * 2,
+        displayRect.h + BALL_R * 2
+      );
       ctx.strokeStyle = '#ffdd00';
-      for (const guard of guards) {
+      for (const windmill of windmills) {
         ctx.beginPath();
-        ctx.moveTo(guard[0], guard[1]);
-        ctx.lineTo(guard[2], guard[3]);
+        ctx.arc(windmill.x, windmill.y, windmill.r + BALL_R, 0, Math.PI * 2);
         ctx.stroke();
       }
+      ctx.strokeStyle = '#ff7a00';
+      ctx.beginPath();
+      ctx.arc(heso.x, heso.y, heso.r + BALL_R, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.restore();
     }
 
@@ -351,18 +384,14 @@
     }
 
     function draw() {
-      if (bg.complete && bg.naturalWidth > 0) ctx.drawImage(bg, 0, 0, W, H);
-      else {
-        ctx.fillStyle = '#120807';
-        ctx.fillRect(0, 0, W, H);
-      }
+      ctx.drawImage(bg, 0, 0, W, H);
       for (const windmill of windmills) drawWindmill(windmill);
       for (const ball of balls) drawBall(ball);
       if (debug) drawDebug();
       drawGlassHighlight();
     }
 
-    let previous = performance.now();
+    let previous = 0;
     let accumulator = 0;
     const fixedStep = 1 / 120;
     function frame(now) {
@@ -376,7 +405,20 @@
       requestAnimationFrame(frame);
     }
 
-    requestAnimationFrame(frame);
+    let started = false;
+    function start() {
+      if (started) return;
+      started = true;
+      previous = performance.now();
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    bg.addEventListener('load', () => {
+      bg.decode().then(start, start);
+    }, { once: true });
+    bg.src = 'kaeru_real_frame.png';
+    if (bg.complete && bg.naturalWidth > 0) bg.decode().then(start, start);
   })();
   </script>
 </body>
