@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>かえるぱち</title>
+  <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #180807; color: #fff7d6; }
+    body {
+      display: grid;
+      place-items: center;
+      padding: 8px;
+      font-family: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic", sans-serif;
+      overscroll-behavior: none;
+      user-select: none;
+    }
+    main { width: min(100%, calc((100vh - 78px) * 2 / 3), 640px); }
+    nav { margin: 0 0 6px; text-align: center; font-size: 11px; }
+    nav a { color: #d8c8a7; text-decoration: none; }
+    nav a:hover, nav a[aria-current="page"] { color: #fff7d6; text-decoration: underline; }
+    nav span { margin: 0 5px; color: #806c55; }
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 2 / 3;
+      border-radius: 3.5% / 2.35%;
+      box-shadow: 0 10px 45px #000b, 0 0 0 2px #f6c539;
+      touch-action: none;
+      cursor: grab;
+      background: #f4d277;
+    }
+    canvas:active { cursor: grabbing; }
+    p { margin: 7px 0 0; text-align: center; font-weight: 700; font-size: clamp(11px, 2.6vw, 14px); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <main>
+    <nav aria-label="スキン切替">
+      <a href="?skin=kaeru" data-skin="kaeru">かえる</a><span aria-hidden="true">／</span>
+      <a href="?skin=neko" data-skin="neko">ねこ</a><span aria-hidden="true">／</span>
+      <a href="?skin=inu" data-skin="inu">いぬ</a>
+    </nav>
+    <canvas id="game" width="1024" height="1536" aria-label="パチンコゲーム"></canvas>
+    <p>操作：右下のハンドルを左右にドラッグ（← →キーも可）／回すと自動で玉を発射</p>
+  </main>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const skins = {
+      kaeru: {image: 'kaeru_pachi_source.png', title: 'かえるぱち'},
+      neko: {image: 'neko_pachi_source.png', title: 'ねこぱち'},
+      inu: {image: 'inu_pachi_source.png', title: 'いぬぱち'}
+    };
+    const requestedSkin = new URLSearchParams(location.search).get('skin');
+    const skinName = Object.hasOwn(skins, requestedSkin) ? requestedSkin : 'kaeru';
+    const skin = skins[skinName];
+
+    const canvas = document.getElementById('game');
+    document.title = skin.title;
+    canvas.setAttribute('aria-label', `${skin.title} パチンコゲーム`);
+    document.querySelector(`[data-skin="${skinName}"]`).setAttribute('aria-current', 'page');
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    const bg = new Image();
+    bg.src = skin.image;
+
+    let stock = 250;
+    let handle = 0;
+    let targetHandle = 0;
+    let dragging = false;
+    let last = performance.now();
+    let fireClock = 0;
+    let windAngle = 0;
+    let message = 'ハンドルを回してスタート！';
+    let messageTimer = 4;
+    let spin = null;
+    let flash = 0;
+    const balls = [];
+    const symbols = ['🐸', '🌸', '七', '祭', '⭐'];
+
+    // 画像内座標に合わせた盤面部品。釘は球の流れが中央へ寄るよう少し傾ける。
+    const nails = [];
+    const addRow = (y, xs) => xs.forEach(x => nails.push({x, y, r: 8}));
+    addRow(570, [215, 315, 410, 512, 614, 710, 809]);
+    addRow(655, [185, 275, 365, 455, 569, 659, 749, 839]);
+    addRow(745, [220, 320, 420, 604, 704, 804]);
+    addRow(840, [175, 270, 365, 455, 569, 659, 754, 849]);
+    addRow(935, [215, 315, 410, 614, 709, 809]);
+    addRow(1030, [255, 345, 435, 589, 679, 769]);
+    addRow(1115, [300, 380, 455, 569, 644, 724]);
+    // 道釘（ヘソに向かう八の字）
+    [[330,1175],[365,1192],[400,1206],[435,1217],[694,1175],[659,1192],[624,1206],[589,1217]]
+      .forEach(([x,y]) => nails.push({x,y,r:8}));
+    // 命釘2本
+    nails.push({x:486,y:1235,r:9,life:true},{x:538,y:1235,r:9,life:true});
+
+    const windmills = [
+      {x:270,y:1070,r:37,dir:1},
+      {x:754,y:1070,r:37,dir:-1}
+    ];
+
+    function spawnBall() {
+      if (stock <= 0 || balls.length >= 48) return;
+      stock--;
+      balls.push({
+        x: 135, y: 1325, vx: 0, vy: 0, r: 10,
+        mode: 'rail', progress: 0,
+        power: handle, age: 0, weakTurn: false
+      });
+    }
+
+    function setHandleFromPointer(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.clientX - rect.left) * W / rect.width;
+      const y = (e.clientY - rect.top) * H / rect.height;
+      const cx = 879, cy = 1350;
+      if (!dragging && Math.hypot(x - cx, y - cy) > 125) return;
+      dragging = true;
+      // ハンドル中心より右へドラッグすると強くなる。上下方向にも少し反応。
+      const dx = x - cx;
+      const dy = y - cy;
+      targetHandle = Math.max(0, Math.min(1, (dx - dy * .35 + 60) / 175));
+    }
+
+    canvas.addEventListener('pointerdown', e => {
+      canvas.setPointerCapture(e.pointerId);
+      setHandleFromPointer(e);
+    });
+    canvas.addEventListener('pointermove', e => { if (dragging) setHandleFromPointer(e); });
+    canvas.addEventListener('pointerup', e => {
+      dragging = false;
+      targetHandle = 0;
+      if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointercancel', () => { dragging = false; targetHandle = 0; });
+
+    const keys = {left:false, right:false};
+    addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        keys[e.key === 'ArrowLeft' ? 'left' : 'right'] = true;
+      }
+    }, {passive:false});
+    addEventListener('keyup', e => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        keys[e.key === 'ArrowLeft' ? 'left' : 'right'] = false;
+      }
+    }, {passive:false});
+
+    function hitCircle(ball, px, py, pr, bounce=.63) {
+      const dx = ball.x - px, dy = ball.y - py;
+      const min = ball.r + pr;
+      const d2 = dx*dx + dy*dy;
+      if (d2 >= min*min || d2 < .0001) return false;
+      const d = Math.sqrt(d2), nx = dx/d, ny = dy/d;
+      const overlap = min - d;
+      ball.x += nx * overlap;
+      ball.y += ny * overlap;
+      const dot = ball.vx*nx + ball.vy*ny;
+      if (dot < 0) {
+        ball.vx -= (1+bounce) * dot * nx;
+        ball.vy -= (1+bounce) * dot * ny;
+        ball.vx += (Math.random()-.5) * 18;
+      }
+      return true;
+    }
+
+    function hitWindmill(ball, w) {
+      hitCircle(ball, w.x, w.y, 16, .7);
+      const a = windAngle * w.dir;
+      for (let k=0;k<4;k++) {
+        const ang = a + k*Math.PI/2;
+        const ex = w.x + Math.cos(ang)*w.r*.65;
+        const ey = w.y + Math.sin(ang)*w.r*.65;
+        if (hitCircle(ball, ex, ey, 10, .74)) {
+          ball.vx += -Math.sin(ang) * 55 * w.dir;
+          ball.vy +=  Math.cos(ang) * 55 * w.dir;
+        }
+      }
+    }
+
+    function enterHeso(index) {
+      balls.splice(index, 1);
+      stock += 3;
+      message = 'ヘソ入賞！ +3発';
+      messageTimer = 2;
+      if (!spin) {
+        const win = Math.random() < 1/28;
+        const winner = symbols[(Math.random()*symbols.length)|0];
+        spin = {time:0, duration:2.5, win, winner, stopped:0, result:null};
+      }
+    }
+
+    function finishSpin() {
+      if (!spin) return;
+      if (spin.win) {
+        spin.result = [spin.winner, spin.winner, spin.winner];
+        stock += 200;
+        message = '大当たり！ +200発';
+        messageTimer = 5;
+        flash = 3;
+      } else {
+        let a = (Math.random()*symbols.length)|0;
+        let b = (Math.random()*symbols.length)|0;
+        let c = (Math.random()*symbols.length)|0;
+        if (a === b && b === c) c = (c+1)%symbols.length;
+        spin.result = [symbols[a], symbols[b], symbols[c]];
+        message = 'ざんねん…次こそ！';
+        messageTimer = 2;
+      }
+    }
+
+    function update(dt) {
+      if (keys.right) targetHandle = Math.min(1, targetHandle + dt*1.05);
+      if (keys.left) targetHandle = Math.max(0, targetHandle - dt*1.25);
+      if (!dragging && !keys.right && !keys.left) targetHandle = Math.max(0, targetHandle - dt*1.45);
+      handle += (targetHandle - handle) * Math.min(1, dt*9);
+
+      fireClock -= dt;
+      if (handle > .12 && fireClock <= 0 && stock > 0) {
+        spawnBall();
+        fireClock = .56;
+      }
+
+      windAngle += dt * 3.1;
+      messageTimer -= dt;
+      flash = Math.max(0, flash-dt);
+
+      if (spin) {
+        spin.time += dt;
+        spin.stopped = Math.min(3, Math.floor(spin.time/.62));
+        if (spin.time >= spin.duration && !spin.result) finishSpin();
+        if (spin.time >= spin.duration + 1.7) spin = null;
+      }
+
+      for (let i=balls.length-1; i>=0; i--) {
+        const b = balls[i];
+        b.age += dt;
+        if (b.mode === 'rail') {
+          // 外周レールを左下→左上へ案内。弱い力は上まで届かず途中で盤面へ落ちる。
+          const climbSpeed = 260 + b.power*720;
+          b.progress += dt * climbSpeed;
+          const y = 1325 - b.progress;
+          const curve = Math.sin(Math.min(1,b.progress/1050)*Math.PI) * 24;
+          b.x = 137 + curve;
+          b.y = y;
+          const reachable = 420 + b.power*920;
+          if (b.progress > reachable && b.power < .48) {
+            b.mode = 'free';
+            b.vx = 35 + b.power*80;
+            b.vy = 80;
+            b.weakTurn = true;
+          } else if (b.y <= 245) {
+            b.mode = 'free';
+            b.x = 170;
+            b.y = 245;
+            b.vx = 215 + b.power*330;
+            b.vy = -110 - b.power*95;
+          }
+          continue;
+        }
+
+        b.vy += 920 * dt;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.vx *= Math.pow(.997, dt*60);
+
+        // 盤面左右のガイド。上部から入った玉を遊技領域に保つ。
+        if (b.x < 155+b.r) { b.x=155+b.r; b.vx=Math.abs(b.vx)*.68; }
+        if (b.x > 869-b.r) { b.x=869-b.r; b.vx=-Math.abs(b.vx)*.68; }
+        if (b.y < 210+b.r) { b.y=210+b.r; b.vy=Math.abs(b.vy)*.65; }
+
+        for (const p of nails) hitCircle(b,p.x,p.y,p.r,.67);
+        for (const w of windmills) hitWindmill(b,w);
+
+        // ヘソの漏斗。命釘の間へ落ちた玉だけを入賞として扱う。
+        if (b.vy > 0 && b.y > 1240 && b.y < 1305 && b.x > 484 && b.x < 540) {
+          enterHeso(i);
+          continue;
+        }
+
+        // 下部アウト口、または長時間残った玉を回収。
+        if (b.y > 1427 || b.age > 18) balls.splice(i,1);
+      }
+    }
+
+    function roundRect(x,y,w,h,r,fill,stroke) {
+      ctx.beginPath();
+      ctx.roundRect(x,y,w,h,r);
+      if (fill) { ctx.fillStyle=fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle=stroke; ctx.lineWidth=4; ctx.stroke(); }
+    }
+
+    function drawNail(p) {
+      const g=ctx.createRadialGradient(p.x-3,p.y-4,1,p.x,p.y,p.r+3);
+      g.addColorStop(0,'#fff'); g.addColorStop(.28,'#d8e1e8'); g.addColorStop(.65,'#77818a'); g.addColorStop(1,'#22282c');
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r+2,0,Math.PI*2); ctx.fillStyle='#442b0b'; ctx.fill();
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+      if (p.life) { ctx.strokeStyle='#fff3a2';ctx.lineWidth=3;ctx.stroke(); }
+    }
+
+    function drawWindmill(w) {
+      ctx.save(); ctx.translate(w.x,w.y); ctx.rotate(windAngle*w.dir);
+      ctx.strokeStyle='#efe9d3'; ctx.lineWidth=10; ctx.lineCap='round';
+      for(let k=0;k<4;k++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(0,9);ctx.lineTo(0,w.r);ctx.stroke();}
+      ctx.restore();
+      ctx.beginPath();ctx.arc(w.x,w.y,16,0,Math.PI*2);ctx.fillStyle='#f4c226';ctx.fill();ctx.strokeStyle='#6e2904';ctx.lineWidth=5;ctx.stroke();
+    }
+
+    function drawBall(b) {
+      const g=ctx.createRadialGradient(b.x-4,b.y-5,1,b.x,b.y,b.r);
+      g.addColorStop(0,'#fff');g.addColorStop(.25,'#e8edf0');g.addColorStop(.7,'#8e969c');g.addColorStop(1,'#31373b');
+      ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+      ctx.strokeStyle='#202427';ctx.lineWidth=2;ctx.stroke();
+    }
+
+    function drawReels() {
+      const boxY=255, size=112, gap=18, startX=326;
+      const active = !!spin;
+      if (!active) return;
+      roundRect(285,218,454,190,30,'rgba(74,6,4,.88)','#ffcf3c');
+      const t=spin.time;
+      let shown;
+      if (spin.result) shown=spin.result;
+      else shown=[0,1,2].map((_,i) => {
+        if (i < spin.stopped) return spin.win ? spin.winner : symbols[(i*2+1)%symbols.length];
+        return symbols[Math.floor(t*14+i*1.7)%symbols.length];
+      });
+      for(let i=0;i<3;i++){
+        const x=startX+i*(size+gap);
+        roundRect(x,boxY,size,112,16,'#fff8df','#e39b11');
+        ctx.fillStyle=shown[i]==='七'?'#e31916':'#17853c';
+        ctx.font='900 66px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
+        ctx.fillText(shown[i],x+size/2,boxY+58);
+      }
+      ctx.fillStyle='#ffe568';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='alphabetic';
+      ctx.fillText(spin.result ? (spin.win?'大 当 た り！':'また挑戦してね') : '抽 選 中 …',512,397);
+    }
+
+    function drawHeso() {
+      // 入賞口の開口部と命釘ラベル
+      ctx.save();
+      ctx.beginPath();ctx.moveTo(470,1270);ctx.lineTo(554,1270);ctx.lineTo(538,1312);ctx.lineTo(486,1312);ctx.closePath();
+      ctx.fillStyle='#17110c';ctx.fill();ctx.strokeStyle='#ffd342';ctx.lineWidth=7;ctx.stroke();
+      roundRect(475,1302,74,34,13,'#d61f17','#fff1a3');
+      ctx.fillStyle='#fff';ctx.font='900 20px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('ヘソ',512,1319);
+      ctx.restore();
+    }
+
+    function drawRail() {
+      ctx.save();ctx.lineCap='round';
+      ctx.beginPath();ctx.moveTo(135,1345);ctx.quadraticCurveTo(93,790,146,250);ctx.strokeStyle='rgba(38,22,10,.82)';ctx.lineWidth=38;ctx.stroke();
+      ctx.beginPath();ctx.moveTo(135,1345);ctx.quadraticCurveTo(93,790,146,250);ctx.strokeStyle='#e6ba3a';ctx.lineWidth=8;ctx.stroke();
+      ctx.beginPath();ctx.moveTo(136,1345);ctx.quadraticCurveTo(96,790,146,250);ctx.strokeStyle='#fff0a0';ctx.lineWidth=2;ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawHandle() {
+      const cx=879,cy=1350;
+      ctx.save();ctx.translate(cx,cy);
+      const g=ctx.createRadialGradient(-20,-25,4,0,0,85);
+      g.addColorStop(0,'#fff4a3');g.addColorStop(.28,'#f5c72c');g.addColorStop(.72,'#a9310b');g.addColorStop(1,'#3d1208');
+      ctx.beginPath();ctx.arc(0,0,82,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();ctx.strokeStyle='#ffe36b';ctx.lineWidth=8;ctx.stroke();
+      ctx.rotate(handle*1.9-.82);
+      roundRect(-18,-61,36,85,17,'#35140d','#fff0a1');
+      ctx.beginPath();ctx.arc(0,-57,25,0,Math.PI*2);ctx.fillStyle='#db3420';ctx.fill();ctx.strokeStyle='#ffd75a';ctx.lineWidth=5;ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle='#fff6c9';ctx.font='900 18px system-ui';ctx.textAlign='center';ctx.fillText('ハンドル',cx,1452);
+      roundRect(cx-70,1464,140,18,9,'#35140d','#f4c834');
+      roundRect(cx-67,1467,134*handle,12,6,handle>.72?'#ffec4f':'#ef6326');
+    }
+
+    function drawHud() {
+      roundRect(42,42,245,74,22,'rgba(38,8,3,.86)','#ffd247');
+      ctx.fillStyle='#fff6cd';ctx.font='700 22px system-ui';ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText('持ち玉',65,66);
+      ctx.fillStyle=stock>0?'#fff':'#ff7c69';ctx.font='900 38px ui-monospace,monospace';ctx.textAlign='right';ctx.fillText(String(stock).padStart(3,'0'),255,91);
+      ctx.fillStyle='#ffd247';ctx.font='700 17px system-ui';ctx.fillText('発',276,91);
+
+      roundRect(737,42,245,74,22,'rgba(38,8,3,.86)','#ffd247');
+      ctx.fillStyle='#fff6cd';ctx.font='700 20px system-ui';ctx.textAlign='center';ctx.fillText('盤面の玉',859,67);
+      ctx.fillStyle='#fff';ctx.font='900 31px ui-monospace,monospace';ctx.fillText(String(balls.length).padStart(2,'0')+' 発',859,96);
+    }
+
+    function drawTitle() {
+      ctx.save();
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font='900 74px "Hiragino Maru Gothic ProN", "Yu Gothic", system-ui';
+      ctx.lineWidth=15;ctx.strokeStyle='rgba(92,29,2,.88)';ctx.strokeText(skin.title,512,166);
+      const g=ctx.createLinearGradient(0,125,0,205);g.addColorStop(0,'#fff37b');g.addColorStop(.5,'#ffc51c');g.addColorStop(1,'#ef5b16');
+      ctx.fillStyle=g;ctx.fillText(skin.title,512,166);
+      ctx.restore();
+    }
+
+    function drawMessage() {
+      if (messageTimer<=0 && stock>0) return;
+      const text = stock<=0 && balls.length===0 ? '玉切れ！ページを再読込で再挑戦' : message;
+      roundRect(267,430,490,56,22,'rgba(15,8,2,.78)','#ffe35b');
+      ctx.fillStyle='#fff8c9';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(text,512,458);
+    }
+
+    function draw() {
+      ctx.clearRect(0,0,W,H);
+      if (bg.complete && bg.naturalWidth) ctx.drawImage(bg,0,0,W,H);
+      else { ctx.fillStyle='#efe3b8';ctx.fillRect(0,0,W,H); }
+
+      if (flash>0 && Math.floor(flash*8)%2===0) {
+        ctx.fillStyle='rgba(255,238,40,.22)';ctx.fillRect(0,0,W,H);
+      }
+      drawRail();
+      drawTitle();
+      drawHud();
+      for (const p of nails) drawNail(p);
+      for (const w of windmills) drawWindmill(w);
+      drawHeso();
+      for (const b of balls) drawBall(b);
+      drawHandle();
+      drawReels();
+      drawMessage();
+    }
+
+    function frame(now) {
+      const dt=Math.min(.026,(now-last)/1000||0);last=now;
+      update(dt);draw();requestAnimationFrame(frame);
+    }
+    bg.addEventListener('error', () => { message='背景画像を読み込めません';messageTimer=999; });
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
