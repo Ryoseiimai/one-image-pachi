@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101f19">
+<link rel="icon" href="data:,">
+<title>かえるぱち — 福を呼ぶ、玉あそび。</title>
+<style>
+*{box-sizing:border-box} :root{color-scheme:dark;--gold:#e9ca83;--muted:#9fae9c;--ink:#101f19}
+body{margin:0;color:#f7f1df;font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:radial-gradient(ellipse at 35% 40%,#2b4937 0,#14271e 43%,#0b1712 100%);min-height:100svh}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.12;background-image:repeating-radial-gradient(circle at 0 100%,transparent 0 23px,#819271 24px 25px,transparent 26px 48px);background-size:96px 48px}
+header{position:relative;max-width:1100px;margin:auto;padding:23px 28px 17px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e9ca8325}
+.brand{display:flex;align-items:center;gap:12px;font-size:12px;letter-spacing:.22em}.seal{display:grid;place-items:center;width:35px;height:35px;border:1px solid var(--gold);border-radius:50%;font:20px serif;color:var(--gold)}
+.edition{color:var(--muted);font-size:11px;letter-spacing:.15em}
+main{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 280px;align-items:center;gap:50px;max-width:1000px;margin:auto;padding:24px 28px 14px}
+.stage{display:flex;justify-content:center;min-width:0}.stage canvas{display:block;width:auto;max-width:100%;height:auto;max-height:calc(100svh - 153px);aspect-ratio:2/3;border-radius:24px;box-shadow:0 24px 65px #0008,0 0 45px #cfab4215}
+.eyebrow{color:var(--gold);font-size:10px;letter-spacing:.23em;margin:0 0 14px}.intro h1{font:500 29px/1.6 "Hiragino Mincho ProN","Yu Mincho",serif;margin:0}.intro p:last-child{color:var(--muted);font-size:12px;line-height:1.9;margin:13px 0 25px}
+.wallet{padding:20px 0 16px;border-top:1px solid #e9ca8345;border-bottom:1px solid #e9ca8325}.wallet-label{color:var(--gold);font-size:12px;letter-spacing:.15em}.balance{display:flex;gap:10px;align-items:baseline;margin-top:4px}.balance strong{font:500 66px/1.15 Georgia,serif;font-variant-numeric:tabular-nums}.balance span{color:var(--muted);font-size:12px}
+.stats{display:flex;gap:30px;margin-top:17px;font-size:11px;color:var(--muted)}.stats b{margin-left:9px;color:#f7f1df;font-size:16px;font-weight:500}
+.status{min-height:41px;display:flex;align-items:center;gap:8px;font-size:11px;color:#d4dfca}.status:before{content:"";width:6px;height:6px;border-radius:50%;background:#a8d47a;box-shadow:0 0 10px #a8d47866}
+.handle-area{display:flex;align-items:center;justify-content:space-between;gap:10px}.handle-copy{flex:1}.handle-copy label{font-size:11px;color:var(--muted)}.power-number{font:28px Georgia,serif;margin-top:8px;color:var(--gold)}.power-number small{font:11px sans-serif;margin-left:4px}#handle{width:142px;height:142px;touch-action:none;cursor:grab;border-radius:50%;flex-shrink:0}#handle:active{cursor:grabbing}
+input[type=range]{display:block;width:100%;accent-color:var(--gold);margin:10px 0 5px;cursor:pointer}.range-labels{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+button{font:inherit;cursor:pointer;transition:background .2s,transform .2s}button:active{transform:translateY(1px)}button:disabled{opacity:.45;cursor:wait}button:focus-visible,canvas:focus-visible,input:focus-visible{outline:2px solid #ffe6a5;outline-offset:4px}
+#fire{width:100%;border:1px solid #ffe5a0;border-radius:6px;padding:15px;color:#253221;background:linear-gradient(110deg,#f2d894,#dcb968);font-size:14px;font-weight:700;letter-spacing:.18em;margin-top:18px}#fire:hover{background:#f7e2ad}#fire[aria-pressed=true]{background:#263c2e;color:var(--gold)}
+.utility{display:flex;justify-content:space-between;margin-top:13px;gap:12px}.utility button{border:0;background:transparent;padding:4px 0;color:var(--muted);font-size:10px}.utility button:hover{color:var(--gold)}.payout{margin:22px 0 0;color:var(--muted);font-size:10px;line-height:1.9;letter-spacing:.03em}.payout b{color:var(--gold);font-weight:400}
+footer{position:relative;text-align:center;font-size:11px;color:#b0bba4;white-space:nowrap;padding:9px 8px 16px;letter-spacing:.06em}.key{color:#eed59c}
+@media(max-width:700px){header{padding:12px 17px}.edition{font-size:9px}.brand{font-size:10px}.seal{width:28px;height:28px;font-size:16px}main{display:flex;flex-direction:column;gap:13px;padding:14px 14px 5px}.stage{width:100%}.stage canvas{max-height:calc(100svh - 292px);border-radius:14px}.panel{width:min(430px,100%);display:grid;grid-template-columns:1fr 1fr;gap:0 18px}.intro,.payout{display:none}.wallet{padding:7px 0;border-bottom:0}.balance strong{font-size:38px}.wallet-label{font-size:10px}.stats{gap:13px;margin-top:5px;font-size:9px}.stats b{font-size:12px;margin-left:5px}.status{font-size:9px;min-height:26px;grid-column:1;grid-row:2}.controls{grid-column:2;grid-row:1/4}.handle-area{gap:0}#handle{width:85px;height:85px}.handle-copy label{font-size:9px}.power-number{font-size:22px}.controls input{margin:0}#fire{padding:10px;margin-top:9px;font-size:11px}.utility{margin-top:5px;grid-column:1;grid-row:3;align-items:end}.utility button{font-size:9px}footer{font-size:9px;letter-spacing:0;padding:8px 3px}.range-labels{font-size:8px}}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
+</style>
+</head>
+<body>
+<header><div class="brand"><span class="seal">福</span>KAERU PACHI</div><span class="edition">福を呼ぶ、玉あそび。</span></header>
+<main>
+  <section class="stage" aria-label="パチンコ盤面"><canvas id="board" width="1024" height="1536" aria-label="かえるぱち。左外周から玉が上がり、釘を通って中央のヘソを目指します。">Canvasに対応したブラウザで開いてください。</canvas></section>
+  <aside class="panel" aria-label="遊技操作">
+    <div class="intro"><p class="eyebrow">お祭り日和 / 01</p><h1>一玉、一玉。<br>福が、かえる。</h1><p>ハンドルを回して、狙いを定めて。<br>かえると楽しむ、小さな縁日。</p></div>
+    <div class="wallet"><div class="wallet-label">持ち玉</div><div class="balance"><strong id="stock">250</strong><span>発</span></div><div class="stats"><span>ヘソ入賞<b id="entries">0</b></span><span>大当たり<b id="wins">0</b></span></div></div>
+    <div class="status" id="status" role="status" aria-live="polite">ハンドルを調整して打ち出そう</div>
+    <div class="controls">
+      <div class="handle-area"><div class="handle-copy"><label for="power">発射の強さ</label><div class="power-number"><output id="powerValue" for="power">68</output><small>%</small></div></div><canvas id="handle" width="284" height="284" tabindex="0" role="slider" aria-label="発射ハンドル。右または上へドラッグして強くする" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68"></canvas></div>
+      <input id="power" type="range" min="0" max="100" value="68" aria-label="発射の強さ"><div class="range-labels"><span>弱い</span><span>強い</span></div>
+      <button id="fire" type="button" aria-pressed="false" disabled>盤面を読み込み中</button>
+    </div>
+    <div class="utility"><button id="sound" type="button" aria-pressed="false">サウンド OFF</button><button id="reset" type="button">↺ はじめから</button></div>
+    <p class="payout">ヘソ入賞 <b>＋3発</b>　/　大当たり <b>＋200発</b><br>遊技用の抽選確率 1/8 ・ 発射は毎分100発</p>
+  </aside>
+</main>
+<footer>ハンドルを<span class="key">ドラッグ</span> / <span class="key">← →</span>で強さ調整　·　<span class="key">SPACE</span>で発射・停止</footer>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id), canvas = $('board'), ctx = canvas.getContext('2d');
+  const handle = $('handle'), hc = handle.getContext('2d'), bg = new Image();
+  const staticBoard = document.createElement('canvas'); staticBoard.width = 1024; staticBoard.height = 1536;
+  const sc = staticBoard.getContext('2d'), G = 780, R = 8.5, DT = 1 / 240, TAU = Math.PI * 2;
+  const clamp = (v,a,b) => Math.max(a,Math.min(b,v)), rand = (a,b) => a + Math.random()*(b-a);
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let stock = 250, entries = 0, wins = 0, power = .68, firing = false, ready = false, failed = false;
+  let balls = [], particles = [], pending = 0, draw = null, reels = [3,5,7], now = 0, nextShot = 0;
+  let sound = false, audio = null, lastTone = 0, drag = null, keys = new Set(), previous = 0, accumulator = 0;
+  const mills = [{x:268,y:920,a:0,w:.8},{x:756,y:920,a:.4,w:-.8}];
+  const pins = [];
+  const pin = (x,y,r=5.5) => pins.push({x,y,r});
+  // 釘は背景の装飾とは独立した、実際に衝突する円。
+  for(let row=0;row<5;row++) for(let col=0;col<9;col++) {
+    const x=215+col*74+(row%2)*26, y=555+row*78;
+    if(x<840 && !(row===2 && x>380 && x<670)) pin(x,y);
+  }
+  for(let side of [-1,1]) {
+    for(let i=0;i<6;i++) pin(512+side*(325-i*12),948+i*51);
+    for(let i=0;i<8;i++) pin(512+side*(207-i*25),1000+i*17); // 道釘
+    pin(512+side*108,1142); pin(512+side*145,1210); pin(512+side*90,1305);
+  }
+  pin(490,1168,7); pin(534,1168,7); // 命釘2本。玉の直径より広い実際の隙間。
+  const walls = [[148,526,127,700],[127,700,127,1175],[127,1175,203,1302],[203,1302,442,1420],
+    [365,454,734,454],[734,454,847,528],[847,528,896,715],[896,715,896,1175],
+    [896,1175,821,1302],[821,1302,582,1420],[469,1210,481,1210],[543,1210,555,1210]];
+  // 左下→左外周→上部。弧長で動かし、接線方向の重力で弱打ちを自然に戻す。
+  const control = [[190,1380],[105,1290],[67,1100],[64,840],[75,615],[115,512],[181,475],[253,460],[337,458]];
+  const rail = []; let railLength = 0;
+  for(let i=0;i<control.length-1;i++) for(let j=0;j<24;j++) {
+    const t=j/24, a=control[Math.max(0,i-1)], b=control[i], c=control[i+1], d=control[Math.min(control.length-1,i+2)];
+    const p={}; for(let k=0;k<2;k++) p[k?'y':'x']=.5*((2*b[k])+(-a[k]+c[k])*t+(2*a[k]-5*b[k]+4*c[k]-d[k])*t*t+(-a[k]+3*b[k]-3*c[k]+d[k])*t*t*t);
+    rail.push(p);
+  }
+  rail.push({x:337,y:458});
+  rail.forEach((p,i)=>{if(i) railLength+=Math.hypot(p.x-rail[i-1].x,p.y-rail[i-1].y);p.s=railLength;});
+  function railAt(s) {
+    s=clamp(s,0,railLength); let lo=0,hi=rail.length-1;
+    while(hi-lo>1){const mid=(lo+hi)>>1;if(rail[mid].s<s)lo=mid;else hi=mid;}
+    const a=rail[lo],b=rail[hi],len=b.s-a.s,t=(s-a.s)/len;
+    return {x:a.x+(b.x-a.x)*t,y:a.y+(b.y-a.y)*t,tx:(b.x-a.x)/len,ty:(b.y-a.y)/len};
+  }
+  function circle(c,x,y,r,fill,stroke) {c.beginPath();c.arc(x,y,r,0,TAU);if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.stroke();}}
+  function line(c,points,color,width) {c.beginPath();points.forEach((p,i)=>i?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.strokeStyle=color;c.lineWidth=width;c.lineCap='round';c.lineJoin='round';c.stroke();}
+  function text(c,value,x,y,size,color,font='sans-serif') {c.fillStyle=color;c.font=`700 ${size}px ${font}`;c.textAlign='center';c.textBaseline='middle';c.fillText(value,x,y);}
+  function plate(c,x,y,w,h,fill,stroke,r=14) {c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=3;c.stroke();}}
+  function paintStatic() {
+    sc.drawImage(bg,0,0,1024,1536);
+    const rp=rail.map(p=>[p.x,p.y]);line(sc,rp,'#172820',31);line(sc,rp,'#ffe6a4',27);line(sc,rp,'#77877d',21);line(sc,rp,'#1b322c',16);
+    walls.slice(0,10).forEach(w=>{line(sc,[[w[0],w[1]],[w[2],w[3]]],'#17271fc0',10);line(sc,[[w[0],w[1]],[w[2],w[3]]],'#f7df9ab0',3);});
+    pins.forEach(p=>{circle(sc,p.x+2,p.y+3,p.r+2,'#13241da0');circle(sc,p.x,p.y,p.r,'#bf9245','#fff0b6');circle(sc,p.x-1.5,p.y-2,p.r*.32,'#fffef3');});
+    text(sc,'福 来 た る ・ お 祭 り パ チ ン コ',512,151,22,'#856024');
+    sc.save();sc.font='900 105px "Hiragino Mincho ProN","Yu Mincho",serif';sc.textAlign='center';sc.textBaseline='middle';sc.strokeStyle='#fff7cd';sc.lineWidth=13;sc.strokeText('かえるぱち',512,243);sc.fillStyle='#932b1b';sc.shadowColor='#c99b4b';sc.shadowOffsetY=5;sc.fillText('かえるぱち',512,243);sc.restore();
+    plate(sc,465,1206,94,62,'#79301c','#ffe9a3',12);plate(sc,480,1207,64,19,'#172119',null,7);text(sc,'ヘソ',512,1245,22,'#fff0b3');
+    plate(sc,442,1413,140,32,'#101b17','#c5a457',15);text(sc,'OUT',512,1430,16,'#b6b19a');
+    plate(sc,123,1360,134,39,'#20392c','#e9ca83',18);text(sc,'発射口 ↗',190,1380,19,'#ffe1a0');
+  }
+  function hud() {
+    $('stock').textContent=stock; $('entries').textContent=entries; $('wins').textContent=wins;
+    $('fire').textContent=ready?(firing?'発射停止':'打ち出す'):failed?'画像を確認してください':'盤面を読み込み中';
+    $('fire').setAttribute('aria-pressed',String(firing));
+    let message=draw?.phase==='win'?'大当たり！ 200発を獲得':draw?.phase==='spin'?'ヘソ入賞！ 図柄を抽選中':firing?(power===0?'強さを上げると発射します':'発射中 · ヘソを狙おう'):'ハンドルを調整して打ち出そう';
+    if(!stock) message=balls.length||draw||pending?'残りの玉・抽選を見守ろう':'持ち玉終了 · はじめから遊べます';
+    if(failed) message='同じフォルダに盤面画像を置いて再読み込み';
+    if($('status').textContent!==message) $('status').textContent=message;
+  }
+  function setPower(v) {power=clamp(v,0,1);const n=Math.round(power*100);$('power').value=n;$('powerValue').textContent=n;handle.setAttribute('aria-valuenow',n);}
+  function beep(frequency,duration=.04,volume=.025) {
+    if(!sound||!audio||audio.state!=='running')return;
+    const o=audio.createOscillator(),g=audio.createGain();o.type='sine';o.frequency.value=frequency;g.gain.setValueAtTime(volume,audio.currentTime);g.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+duration);o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+duration);o.onended=()=>{o.disconnect();g.disconnect();};
+  }
+  function spark(x,y,color,n=7) {if(reduced)return;for(let i=0;i<n && particles.length<220;i++)particles.push({x,y,vx:rand(-150,150),vy:rand(-210,30),life:rand(.3,.7),color});}
+  function shoot() {
+    if(!ready||stock<1||power===0)return;
+    stock--;const p=railAt(0);balls.push({x:p.x,y:p.y,vx:0,vy:0,s:0,v:590+power*1110+rand(-12,12),lane:true,age:0,trail:[]});
+    beep(210,.025,.012);hud();
+  }
+  function beginDraw() {
+    if(draw||!pending)return;pending--;
+    const win=Math.random()<1/8,result=win?[7,7,7]:[1+Math.floor(rand(0,7)),1+Math.floor(rand(0,7)),1+Math.floor(rand(0,7))];
+    if(!win&&result[0]===result[1]&&result[1]===result[2])result[2]=result[2]%7+1;
+    draw={phase:'spin',t:0,win,result};hud();
+  }
+  function enter(b) {b.dead=true;stock+=3;entries++;pending++;spark(512,1208,'#ffe888',16);beep(980,.16,.06);beginDraw();hud();}
+  // 円と点／線分の衝突。風車は接触点の回転速度も反発へ加える。
+  function collide(b,x,y,r,restitution=.72,surfaceX=0,surfaceY=0) {
+    let dx=b.x-x,dy=b.y-y,d=Math.hypot(dx,dy),min=R+r;if(d>=min)return 0;
+    if(d<.0001){dx=0;dy=-1;d=1;}const nx=dx/d,ny=dy/d;
+    b.x+=nx*(min-d+.02);b.y+=ny*(min-d+.02);
+    const speed=(b.vx-surfaceX)*nx+(b.vy-surfaceY)*ny;if(speed>=0)return 0;
+    const impulse=-(1+restitution)*speed;b.vx+=impulse*nx;b.vy+=impulse*ny;
+    if(speed< -70 && now-lastTone>.045){beep(rand(1700,2400),.018,.008);lastTone=now;}
+    return impulse;
+  }
+  function segment(b,x1,y1,x2,y2,r=3,mill=null) {
+    const dx=x2-x1,dy=y2-y1,t=clamp(((b.x-x1)*dx+(b.y-y1)*dy)/(dx*dx+dy*dy),0,1),x=x1+dx*t,y=y1+dy*t;
+    const beforeX=b.vx,beforeY=b.vy;
+    collide(b,x,y,r,.62,mill?-(y-mill.y)*mill.w:0,mill?(x-mill.x)*mill.w:0);
+    if(mill) mill.w=clamp(mill.w+((x-mill.x)*(beforeY-b.vy)-(y-mill.y)*(beforeX-b.vx))/6500,-7,7);
+  }
+  function update(dt) {
+    now+=dt;
+    if(keys.has('ArrowRight'))setPower(power+dt*.35);if(keys.has('ArrowLeft'))setPower(power-dt*.35);
+    if(firing){nextShot-=dt;if(nextShot<=0){shoot();nextShot=.6;}if(!stock){firing=false;hud();}}
+    mills.forEach(m=>{m.a+=m.w*dt;m.w*=Math.exp(-dt*.25);});
+    for(const b of balls) {
+      b.age+=dt;
+      if(b.lane) {
+        const p=railAt(b.s);b.v+=(G*p.ty-b.v*.022)*dt;b.s+=b.v*dt;
+        const q=railAt(b.s);b.x=q.x;b.y=q.y;
+        if(b.s>=railLength){b.lane=false;b.vx=q.tx*b.v;b.vy=q.ty*b.v;}
+        else if(b.s<0)b.dead=true;
+        continue;
+      }
+      const oldY=b.y;b.vy+=G*dt;b.vx*=Math.exp(-dt*.025);b.x+=b.vx*dt;b.y+=b.vy*dt;
+      if(b.vy>0&&oldY<1208&&b.y>=1208&&Math.abs(b.x-512)<23.5){enter(b);continue;}
+      for(const p of pins)collide(b,p.x,p.y,p.r);
+      for(const w of walls)segment(b,...w);
+      for(const m of mills) {
+        if(Math.hypot(b.x-m.x,b.y-m.y)>44)continue;
+        for(let i=0;i<2;i++){const a=m.a+i*Math.PI/2,dx=Math.cos(a)*27,dy=Math.sin(a)*27;segment(b,m.x-dx,m.y-dy,m.x+dx,m.y+dy,3,m);}
+        collide(b,m.x,m.y,7);
+      }
+      if(b.y>1438)b.dead=true;
+      // 最終的な回収口以外へ数値誤差で逃げないよう、外枠を閉じる。
+      if(b.x<R){b.x=R;b.vx=Math.abs(b.vx)*.5;}if(b.x>1024-R){b.x=1024-R;b.vx=-Math.abs(b.vx)*.5;}
+      if(b.y<451){b.y=451;b.vy=Math.abs(b.vy)*.6;}
+      if(b.age>24&&Math.hypot(b.vx,b.vy)<15)b.vx+=rand(-25,25); // 釘上の静止を解く微小な振動。
+    }
+    for(let i=0;i<balls.length;i++)for(let j=i+1;j<balls.length;j++) {
+      const a=balls[i],b=balls[j];if(a.lane||b.lane||a.dead||b.dead)continue;
+      const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);if(d===0||d>=2*R)continue;
+      const nx=dx/d,ny=dy/d,overlap=(2*R-d)/2;a.x-=nx*overlap;a.y-=ny*overlap;b.x+=nx*overlap;b.y+=ny*overlap;
+      const speed=(b.vx-a.vx)*nx+(b.vy-a.vy)*ny;if(speed<0){const impulse=-.9*speed;a.vx-=impulse*nx;a.vy-=impulse*ny;b.vx+=impulse*nx;b.vy+=impulse*ny;}
+    }
+    const oldCount=balls.length;balls=balls.filter(b=>!b.dead);if(balls.length!==oldCount)hud();
+    particles.forEach(p=>{p.life-=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=300*dt;});particles=particles.filter(p=>p.life>0);
+    if(draw) {
+      draw.t+=dt;
+      if(draw.phase==='spin') {
+        reels=reels.map((v,i)=>draw.t>1.05+i*.48?draw.result[i]:1+(Math.floor(draw.t*17+i*2)%7));
+        if(draw.t>=2.2){reels=[...draw.result];draw.phase=draw.win?'win':'miss';draw.t=0;if(draw.win){stock+=200;wins++;spark(512,350,'#ffe28b',100);beep(784,.5,.09);}hud();}
+      } else if(draw.t>(draw.phase==='win'?3.2:.65)){draw=null;beginDraw();hud();}
+    } else beginDraw();
+  }
+  function paintHandle() {
+    hc.clearRect(0,0,284,284);const cx=142,cy=142,a=Math.PI*.75+power*Math.PI*1.5;
+    hc.lineWidth=4;hc.beginPath();hc.arc(cx,cy,126,Math.PI*.75,Math.PI*2.25);hc.strokeStyle='#72806a50';hc.stroke();
+    hc.beginPath();hc.arc(cx,cy,126,Math.PI*.75,a);hc.strokeStyle='#e9ca83';hc.stroke();
+    const g=hc.createRadialGradient(112,97,5,cx,cy,106);g.addColorStop(0,'#59725a');g.addColorStop(.6,'#2e4938');g.addColorStop(1,'#15291e');hc.lineWidth=3;circle(hc,cx,cy,107,g,'#c5b275');circle(hc,cx,cy,92,null,'#d9c68850');
+    hc.save();hc.translate(cx,cy);hc.rotate(a);line(hc,[[63,0],[85,0]],'#ffe7a5',8);hc.restore();
+    text(hc,'福',cx,135,64,'#e5cc8d','serif');text(hc,'HANDLE',cx,178,13,'#afbb9b');
+    circle(hc,cx+126*Math.cos(a),cy+126*Math.sin(a),7,'#ffdf8d');
+  }
+  function render() {
+    ctx.clearRect(0,0,1024,1536);
+    if(!ready){ctx.fillStyle='#183223';ctx.fillRect(0,0,1024,1536);text(ctx,failed?'盤面画像が見つかりません':'かえるぱち',512,660,48,'#f1d793');if(failed)text(ctx,'kaeru_pachi_source.png を同じフォルダに置いてください',512,750,22,'#fff0cc');paintHandle();return;}
+    ctx.drawImage(staticBoard,0,0);
+    for(let i=0;i<3;i++) {
+      const x=371+i*141;plate(ctx,x-58,296,116,83,'#fff9e5','#cda655',13);
+      text(ctx,String(reels[i]),x,339,65,draw?.phase==='win'?'#ba311e':'#2b5734','Georgia,serif');
+    }
+    text(ctx,draw?.phase==='win'?'大 当 た り！ ＋200発':draw?.phase==='spin'?'福 よ 来 い …':draw?.phase==='miss'?'もう一玉に、願いを。':'ヘソに入れて、福を呼ぼう',512,402,22,draw?.phase==='win'?'#b92617':'#79602b');
+    if(pending)text(ctx,`保留 ${pending}`,710,402,16,'#79602b');
+    mills.forEach(m=>{ctx.save();ctx.translate(m.x,m.y);ctx.rotate(m.a);ctx.shadowColor='#07160d';ctx.shadowBlur=6;for(let i=0;i<2;i++){ctx.rotate(Math.PI/2);line(ctx,[[-27,0],[27,0]],'#fff0ac',10);line(ctx,[[-24,0],[24,0]],'#ba4b28',5);}ctx.restore();circle(ctx,m.x,m.y,8,'#fff2b1','#7b591b');});
+    for(const b of balls) {
+      if(!reduced){b.trail.push({x:b.x,y:b.y});if(b.trail.length>4)b.trail.shift();b.trail.forEach((p,i)=>circle(ctx,p.x,p.y,R*(i+1)/6,`rgba(255,243,179,${i*.09})`));}
+      ctx.save();ctx.shadowColor='#fff3bb';ctx.shadowBlur=13;const g=ctx.createRadialGradient(b.x-3,b.y-4,1,b.x,b.y,R);g.addColorStop(0,'#fff');g.addColorStop(.35,'#eaf7ff');g.addColorStop(.72,'#91a9b5');g.addColorStop(1,'#35464f');ctx.lineWidth=1.5;circle(ctx,b.x,b.y,R,g,'#fff9df');ctx.restore();
+    }
+    particles.forEach(p=>{ctx.globalAlpha=clamp(p.life*2,0,1);circle(ctx,p.x,p.y,3,p.color);});ctx.globalAlpha=1;
+    if(draw?.phase==='win'){ctx.save();ctx.lineWidth=12;ctx.strokeStyle=`rgba(255,243,152,${reduced ? .8 : .6+Math.sin(now*9)*.3})`;ctx.beginPath();ctx.roundRect(21,17,982,1497,100);ctx.stroke();ctx.restore();}
+    paintHandle();
+  }
+  function toggle() {if(!ready||stock<1)return;firing=!firing;nextShot=0;hud();}
+  $('fire').addEventListener('click',toggle);
+  $('power').addEventListener('input',e=>setPower(Number(e.target.value)/100));
+  handle.addEventListener('pointerdown',e=>{if(e.button!==0)return;handle.focus();handle.setPointerCapture(e.pointerId);drag={id:e.pointerId,x:e.clientX,y:e.clientY,p:power};});
+  handle.addEventListener('pointermove',e=>{if(drag?.id===e.pointerId)setPower(drag.p+(e.clientX-drag.x-e.clientY+drag.y)/180);});
+  const endDrag=()=>{drag=null;};handle.addEventListener('pointerup',endDrag);handle.addEventListener('pointercancel',endDrag);handle.addEventListener('lostpointercapture',endDrag);
+  document.addEventListener('keydown',e=>{if(e.altKey||e.ctrlKey||e.metaKey)return;if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();if(!e.repeat)setPower(power+(e.key==='ArrowRight'?.02:-.02));keys.add(e.key);}if(e.code==='Space'){e.preventDefault();if(!e.repeat)toggle();}});
+  document.addEventListener('keyup',e=>keys.delete(e.key));
+  function stop(){keys.clear();drag=null;firing=false;accumulator=0;hud();}
+  window.addEventListener('blur',stop);document.addEventListener('visibilitychange',()=>{if(document.hidden)stop();previous=0;});
+  $('reset').addEventListener('click',()=>{stop();stock=250;entries=0;wins=0;balls=[];particles=[];pending=0;draw=null;reels=[3,5,7];mills.forEach((m,i)=>{m.a=i*.4;m.w=i?-.8:.8;});setPower(.68);hud();});
+  $('sound').addEventListener('click',async()=>{try{if(!audio){const Audio=window.AudioContext||window.webkitAudioContext;if(!Audio){$('sound').textContent='サウンド未対応';return;}audio=new Audio();}if(audio.state==='suspended')await audio.resume();sound=!sound;$('sound').textContent=`サウンド ${sound?'ON':'OFF'}`;$('sound').setAttribute('aria-pressed',String(sound));beep(660,.1);}catch{sound=false;$('sound').textContent='サウンド未対応';$('sound').setAttribute('aria-pressed','false');}});
+  function frame(t) {if(!previous)previous=t;const elapsed=Math.min((t-previous)/1000,.05);previous=t;if(ready&&!document.hidden){accumulator+=elapsed;while(accumulator>=DT){update(DT);accumulator-=DT;}}render();requestAnimationFrame(frame);}
+  bg.onload=()=>{paintStatic();ready=true;$('fire').disabled=false;hud();};bg.onerror=()=>{failed=true;hud();};
+  bg.src='./kaeru_pachi_source.png';
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
