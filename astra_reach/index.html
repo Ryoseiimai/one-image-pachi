@@ -32,7 +32,7 @@
       background: #f4d277;
     }
     canvas:active { cursor: grabbing; }
-    p { margin: 7px 0 0; text-align: center; font-weight: 700; font-size: clamp(11px, 2.6vw, 14px); white-space: nowrap; }
+    p { margin: 7px 0 0; text-align: center; font-weight: 700; font-size: clamp(11px, 2.6vw, 14px); }
   </style>
 </head>
 <body>
@@ -42,8 +42,8 @@
       <a href="?skin=neko" data-skin="neko">ねこ</a><span aria-hidden="true">／</span>
       <a href="?skin=inu" data-skin="inu">いぬ</a>
     </nav>
-    <canvas id="game" width="1024" height="1536" aria-label="パチンコゲーム"></canvas>
-    <p>操作：右下のハンドルを左右にドラッグ（← →キーも可）／回すと自動で玉を発射</p>
+    <canvas id="game" width="1024" height="1536" tabindex="0" aria-label="パチンコゲーム"></canvas>
+    <p>ハンドルをドラッグ／← →で発射 · PUSHはSpace・クリック・タップ<br>音はMキー／画面上部で切替</p>
   </main>
 
   <script>
@@ -60,8 +60,7 @@
     const skinName = Object.hasOwn(skins, requestedSkin) ? requestedSkin : 'kaeru';
     const skin = skins[skinName];
     const feverMode = params.get('fever') === '1';
-    const requestedReach = ['fish','punch','zenkaiten'].includes(params.get('reach')) ? params.get('reach') : null;
-    let forcedReachPending = Boolean(requestedReach);
+    let forcedReach = ['fish','punch','zenkaiten'].includes(params.get('reach')) ? params.get('reach') : null;
 
     const canvas = document.getElementById('game');
     document.title = skin.title;
@@ -71,15 +70,10 @@
     const W = canvas.width, H = canvas.height;
     const bg = new Image();
     bg.src = skin.image;
-    const nekoPoses = new Image();
-    const nekoSymbols = new Image();
-    let nekoPosesReady = false;
-    let nekoSymbolsReady = false;
+    const poses = new Image(), symbols = new Image();
     if (skinName === 'neko') {
-      nekoPoses.addEventListener('load', () => { nekoPosesReady = true; });
-      nekoSymbols.addEventListener('load', () => { nekoSymbolsReady = true; });
-      nekoPoses.src = 'assets/neko_poses_sheet.png';
-      nekoSymbols.src = 'assets/neko_symbols_sheet.png';
+      poses.src = 'assets/neko_poses_sheet.png';
+      symbols.src = 'assets/neko_symbols_sheet.png';
     }
 
     let stock = 250;
@@ -93,9 +87,14 @@
     let messageTimer = 4;
     let spin = null;
     let holds = 0;
-    let nextSpinDelay = 0;
+    // A valid reach query previews exactly one spin, without a ball or payout shortcut.
+    let nextSpinDelay = forcedReach ? .6 : 0;
     const balls = [];
     const lcd = {x:282, y:505, w:460, h:292};
+    const spScreen = {x:W*.05, y:376, w:W*.9, h:770};
+    const pushButton = {x:W/2-172, y:spScreen.y+580, w:344, h:118};
+    const reachNames = {fish:'魚とり', punch:'猫パンチ', zenkaiten:'全回転'};
+    const spPhases = ['develop','story','push','climax','spResult','revival'];
 
     let audioCtx = null;
     let masterGain = null;
@@ -133,16 +132,17 @@
       if (name === 'stop') { tone(135,.085,'triangle',.07); tone(72,.11,'sine',.045,.015); }
       if (name === 'reach') { [392,494,622,784].forEach((f,i)=>tone(f,.2,'square',.035,i*.12,f*1.08)); }
       if (name === 'don') { tone(82,.42,'sine',.18,0,38); tone(48,.5,'triangle',.12,0,30); }
-      if (name === 'develop') { tone(105,.7,'sawtooth',.16,0,42); tone(52,.85,'sine',.2,0,28); }
-      if (name === 'spLoop') { tone(110,.2,'square',.025); tone(165,.13,'triangle',.025,.16); }
-      if (name === 'count') { tone(760,.1,'square',.065); tone(380,.15,'triangle',.04,.03); }
-      if (name === 'push') { [523,784,1047].forEach((f,i)=>tone(f,.13,'square',.055,i*.075)); }
-      if (name === 'success') { [523,659,784,1047,1319].forEach((f,i)=>tone(f,.5,'square',.065,i*.09,f*1.08)); }
-      if (name === 'fail') { tone(330,.62,'sawtooth',.07,0,82); tone(196,.72,'triangle',.05,.1,55); }
-      if (name === 'break') { [180,125,78,920].forEach((f,i)=>tone(f,.15,'sawtooth',.055,i*.06,Math.max(30,f*.45))); }
       if (name === 'fan') { [523,659,784,1047,1319].forEach((f,i)=>tone(f,.42,'square',.055,i*.105,f*1.01)); }
       if (name === 'pay') { tone(920,.055,'square',.038); tone(1320,.07,'sine',.035,.045); }
       if (name === 'arp') { [523,659,784,1047].forEach((f,i)=>tone(f,.18,'triangle',.032,i*.13)); }
+      if (name === 'develop') { tone(155,.8,'sawtooth',.09,0,34); tone(62,.9,'sine',.18,0,27); }
+      if (name === 'spLoop') { [165,220,247,220].forEach((f,i)=>tone(f,.19,'triangle',.035,i*.19)); }
+      if (name === 'count') { tone(740,.16,'square',.045); tone(92,.2,'sine',.1); }
+      if (name === 'pushReady') { [659,988,1319].forEach((f,i)=>tone(f,.25,'square',.045,i*.08)); }
+      if (name === 'push') { tone(55,.5,'sine',.18,0,26); tone(1800,.3,'sawtooth',.06,0,160); }
+      if (name === 'success') { [523,659,784,1047,784,1047,1568].forEach((f,i)=>tone(f,.34,'triangle',.085,i*.11)); }
+      if (name === 'fail') { [392,330,262,131].forEach((f,i)=>tone(f,.3,'triangle',.065,i*.13,f*.7)); }
+      if (name === 'revive') { tone(65,1.2,'sawtooth',.08,0,1300); tone(196,1.1,'triangle',.08,0,784); }
     }
 
     function toggleMute() {
@@ -200,14 +200,14 @@
       const rect = canvas.getBoundingClientRect();
       const x = (e.clientX - rect.left) * W / rect.width;
       const y = (e.clientY - rect.top) * H / rect.height;
-      if (spin && spin.phase === 'push' && x >= 330 && x <= 694 && y >= 1030 && y <= 1190) {
-        pressPush();
-        return;
-      }
       if (x >= 462 && x <= 562 && y >= 44 && y <= 108) {
         toggleMute();
         return;
       }
+      if (spin && spin.phase === 'push' && x >= pushButton.x-30 && x <= pushButton.x+pushButton.w+30 && y >= pushButton.y-25 && y <= pushButton.y+pushButton.h+25) {
+        e.preventDefault(); pressPush(); return;
+      }
+      if (spin && spPhases.includes(spin.phase) && y >= spScreen.y && y <= spScreen.y+spScreen.h) return;
       canvas.setPointerCapture(e.pointerId);
       setHandleFromPointer(e);
     });
@@ -226,9 +226,9 @@
         toggleMute();
         return;
       }
-      if ((e.code === 'Space' || e.key === ' ') && !e.repeat && spin && spin.phase === 'push') {
+      if (e.code === 'Space') {
         e.preventDefault();
-        pressPush();
+        if (!e.repeat) pressPush();
         return;
       }
       if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -291,47 +291,63 @@
       }
     }
 
-    function wrapDigit(n) {
-      const max = skinName === 'neko' ? 7 : 9;
-      return ((n - 1 + max) % max) + 1;
-    }
+    function wrapDigit(n) { return ((n - 1) % 7 + 7) % 7 + 1; }
 
     function startSpin() {
-      const forcedType = forcedReachPending ? requestedReach : null;
-      forcedReachPending = false;
-      let win = forcedType === 'zenkaiten' || Math.random() < (feverMode ? 1/3 : 1/60);
-      const symbolMax = skinName === 'neko' ? 7 : 9;
-      const left = 1 + (Math.random()*symbolMax|0);
-      const reach = Boolean(forcedType) || win || Math.random() < .34;
+      nextSpinDelay = 0;
+      const forced = forcedReach;
+      forcedReach = null;
+      const win = Math.random() < (feverMode ? 1/3 : 1/60) || forced === 'zenkaiten';
+      const left = 1 + (Math.random()*7|0);
+      const reach = !!forced || win || Math.random() < .34;
+      // 全回転 is selected on 10% of winning spins, never on an ordinary loss.
+      const fullRotation = !forced && win && Math.random() < .1;
+      const develops = reach && (!!forced || fullRotation || feverMode || Math.random() < (win ? .5 : .55));
+      const story = develops ? (forced || (fullRotation ? 'zenkaiten' : Math.random() < .5 ? 'fish' : 'punch')) : null;
       let result;
       if (win) {
         result = [left, left, left];
       } else if (reach) {
         const offset = Math.random() < .5 ? -1 : 1;
-        let middle = left + offset;
-        if (middle < 1) middle = symbolMax;
-        if (middle > symbolMax) middle = 1;
-        result = [left, middle, left];
+        result = [left, wrapDigit(left + offset), left];
       } else {
         let center, right;
-        do { center = 1 + (Math.random()*symbolMax|0); } while (center === left);
-        do { right = 1 + (Math.random()*symbolMax|0); } while (right === left || right === center);
+        do { center = 1 + (Math.random()*7|0); } while (center === left);
+        do { right = 1 + (Math.random()*7|0); } while (right === left || right === center);
         result = [left, center, right];
       }
-      const develop = Boolean(forcedType) || feverMode || Math.random() < .55;
-      let spType = forcedType;
-      if (!spType && develop) {
-        spType = win && Math.random() < .1 ? 'zenkaiten' : (Math.random() < .5 ? 'fish' : 'punch');
-      }
       spin = {
-        phase:'spin', time:0, duration:3.1+Math.random()*.8,
-        win, originalWin:win, reach, result, develop, spType,
-        revive:!win && develop && Math.random()<.08,
+        phase:'spin', time:0, duration:3.6, elapsed:0,
+        win, reach, result, develops, story,
+        // Revival is decided once for 8% of failed SPs, before any input.
+        revive:develops && !win && Math.random()<.08,
         stopped:[false,false,false], stopSounds:[false,false,false],
-        round:0, arpClock:0, spBeat:0, countMark:0, flash:0
+        round:0, arpClock:0, loopClock:0, count:0, impactSound:false,
+        pushSource:null
       };
+      canvas.dataset.story = story || 'normal';
+      setPhase('spin');
       message = feverMode ? '変動開始！ FEVER 1/3' : '変動開始！';
       messageTimer = 1.1;
+    }
+
+    function setPhase(phase) {
+      spin.phase = phase; spin.time = 0;
+      canvas.dataset.phase = phase;
+      canvas.setAttribute('aria-label', phase === 'push' ? `${skin.title} PUSH！ Spaceまたはボタンをタップ` : `${skin.title} ${reachNames[spin.story] || ''} ${phase === 'spResult' ? (spin.win ? '成功' : 'ハズレ') : ''}`);
+    }
+
+    function pressPush(source='user') {
+      if (!spin || spin.phase !== 'push') return;
+      spin.pushSource = source;
+      setPhase('climax');
+      sfx('push');
+    }
+
+    function settleSP() {
+      stopReel(1);
+      setPhase('spResult');
+      sfx(spin.win ? 'success' : 'fail');
     }
 
     function stopReel(index) {
@@ -343,61 +359,23 @@
       }
     }
 
-    function enterPhase(phase) {
-      if (!spin) return;
-      spin.phase = phase;
-      spin.time = 0;
-    }
-
-    function pressPush() {
-      if (!spin || spin.phase !== 'push') return;
-      sfx('push');
-      spin.flash = .34;
-      spin.outcomeDuration = Math.max(1, 2 - spin.time);
-      enterPhase('spOutcome');
-      if (spin.win) sfx('success');
-      else sfx('fail');
-    }
-
-    function settleSpResult() {
-      if (!spin) return;
-      stopReel(1);
-      if (spin.win) {
-        spin.result[1] = spin.result[0];
-        enterPhase('result');
-      } else {
-        enterPhase('spMiss');
-      }
-    }
-
-    function startRevival() {
-      if (!spin) return;
-      spin.win = true;
-      spin.result[1] = spin.result[0];
-      spin.stopped = [true,true,true];
-      spin.stopSounds = [true,true,true];
-      sfx('break');
-      enterPhase('revivalBreak');
-    }
-
     function finishResult() {
       if (!spin) return;
       if (spin.win) {
-        spin.phase = 'jackpotFlash';
-        spin.time = 0;
+        setPhase('jackpotFlash');
         message = '大当たり！';
         messageTimer = 4;
         sfx('fan');
       } else {
         message = spin.reach ? '惜しい！ ズレ目…' : 'ざんねん…次こそ！';
         messageTimer = 2;
-        spin.phase = 'ending';
-        spin.time = 0;
+        setPhase('ending');
       }
     }
 
     function endSpin() {
       spin = null;
+      canvas.dataset.phase = 'idle';
       if (holds > 0) {
         holds--;
         nextSpinDelay = .55;
@@ -426,76 +404,67 @@
 
       if (spin) {
         spin.time += dt;
-        spin.flash = Math.max(0, spin.flash - dt);
+        spin.elapsed += dt;
         if (spin.phase === 'spin') {
           if (spin.time >= spin.duration*.48) stopReel(0);
           if (spin.time >= spin.duration*.7) stopReel(2);
           if (spin.reach && spin.time >= spin.duration*.7) {
-            enterPhase('normalReach');
+            setPhase('reach');
             message = 'リーチ！'; messageTimer = 2;
             sfx('reach');
           } else if (!spin.reach && spin.time >= spin.duration) {
             stopReel(1);
-            enterPhase('result');
+            setPhase('result');
           }
-        } else if (spin.phase === 'normalReach' && spin.time >= 2) {
-          if (spin.develop) {
-            enterPhase('develop');
-            message = '発展！'; messageTimer = 1;
-            sfx('develop');
-          } else {
-            stopReel(1);
-            enterPhase('result');
+        } else if (spin.phase === 'reach') {
+          if (spin.time >= 2) {
+            if (spin.develops) {
+              setPhase('develop'); sfx('develop');
+              messageTimer = 0;
+            } else {
+              stopReel(1); setPhase('result');
+            }
           }
         } else if (spin.phase === 'develop' && spin.time >= .8) {
-          enterPhase(spin.spType === 'zenkaiten' ? 'zenkaiten' : 'spStory');
-          spin.spBeat = 0;
-          message = spin.spType === 'fish' ? '魚をつかまえろ！' : spin.spType === 'punch' ? '猫パンチを決めろ！' : '全回転！';
-          messageTimer = 2;
-        } else if (spin.phase === 'spStory') {
-          spin.spBeat -= dt;
-          if (spin.spBeat <= 0) { sfx('spLoop'); spin.spBeat = .68; }
-          if (spin.spType === 'punch') {
-            const mark = spin.time < 1.35 ? 0 : spin.time < 2.25 ? 1 : spin.time < 3.15 ? 2 : 3;
-            if (mark > spin.countMark) { spin.countMark = mark; sfx('count'); }
+          setPhase('story');
+        } else if (spin.phase === 'story') {
+          spin.loopClock -= dt;
+          if (spin.loopClock <= 0) { sfx(spin.story === 'zenkaiten' ? 'arp' : 'spLoop'); spin.loopClock = .8; }
+          if (spin.story === 'punch' && spin.time >= 2.6) {
+            const count = Math.max(1,3-Math.floor(spin.time-2.6));
+            if (spin.count !== count) { spin.count = count; sfx('count'); }
           }
-          if (spin.time >= 4) {
-            enterPhase('push');
-            sfx('push');
+          if (spin.story === 'zenkaiten' && spin.time >= 6.8) {
+            settleSP();
+          } else if (spin.story !== 'zenkaiten' && spin.time >= 5.6) {
+            setPhase('push'); sfx('pushReady');
           }
         } else if (spin.phase === 'push' && spin.time >= 3) {
-          pressPush();
-        } else if (spin.phase === 'spOutcome' && spin.time >= spin.outcomeDuration) {
-          settleSpResult();
-        } else if (spin.phase === 'zenkaiten') {
-          spin.spBeat -= dt;
-          if (spin.spBeat <= 0) { sfx('spLoop'); spin.spBeat = .55; }
-          if (spin.time >= 6.2) {
-            spin.stopped = [true,true,true];
-            spin.stopSounds = [true,true,true];
+          pressPush('auto');
+        } else if (spin.phase === 'climax') {
+          if (!spin.impactSound && spin.time >= .35) { spin.impactSound = true; sfx('don'); }
+          if (spin.time >= 1.1) settleSP();
+        } else if (spin.phase === 'spResult' && spin.time >= 1.1) {
+          if (spin.revive) { setPhase('revival'); sfx('revive'); }
+          else finishResult();
+        } else if (spin.phase === 'revival') {
+          if (spin.time >= 1.25 && !spin.win) {
+            spin.win = true;
             spin.result = [spin.result[0],spin.result[0],spin.result[0]];
-            sfx('success');
-            enterPhase('result');
+            sfx('push'); sfx('success');
           }
-        } else if (spin.phase === 'spMiss' && spin.time >= 1.2) {
-          if (spin.revive) enterPhase('revivalText');
-          else { message = 'ハズレ…'; messageTimer = 2; enterPhase('ending'); }
-        } else if (spin.phase === 'revivalText' && spin.time >= 1.15) {
-          startRevival();
-        } else if (spin.phase === 'revivalBreak' && spin.time >= 1.25) {
-          sfx('success');
-          enterPhase('result');
+          if (spin.time >= 2.3) finishResult();
         } else if (spin.phase === 'result' && spin.time >= 1.35) {
           finishResult();
         } else if (spin.phase === 'ending' && spin.time >= 1.65) {
           endSpin();
         } else if (spin.phase === 'jackpotFlash' && spin.time >= .55) {
-          spin.phase = 'jackpotIntro'; spin.time = 0; spin.arpClock = 0;
+          setPhase('jackpotIntro'); spin.arpClock = 0;
         } else if (spin.phase === 'jackpotIntro') {
           spin.arpClock -= dt;
           if (spin.arpClock <= 0) { sfx('arp'); spin.arpClock = .72; }
           if (spin.time >= 3) {
-            spin.phase = 'rounds'; spin.time = 0; spin.round = 1;
+            setPhase('rounds'); spin.round = 1;
             stock += 20; sfx('pay');
           }
         } else if (spin.phase === 'rounds') {
@@ -505,7 +474,7 @@
             if (spin.round < 10) {
               spin.round++; spin.time = 0; stock += 20; sfx('pay');
             } else {
-              spin.phase = 'jackpotEnd'; spin.time = 0;
+              setPhase('jackpotEnd');
               message = '大当たり終了！ +200発'; messageTimer = 3;
             }
           }
@@ -596,8 +565,8 @@
     }
 
     function drawReels() {
-      if (!spin) return;
-      const reaching = spin.phase === 'normalReach';
+      if (!spin || spPhases.includes(spin.phase)) return;
+      const reaching = spin.phase === 'reach';
       const pulse = .55 + .45*Math.sin(performance.now()/105);
       const border = reaching ? `rgba(255,35,25,${pulse})` : skin.accent;
       roundRect(lcd.x,lcd.y,lcd.w,lcd.h,30,'rgba(3,2,8,.83)',border);
@@ -613,14 +582,14 @@
         ctx.save();
         ctx.beginPath();ctx.roundRect(x+4,reelY+4,reelW-8,reelH-8,10);ctx.clip();
         if (spin.stopped[i]) {
-          drawDigit(spin.result[i],x+reelW/2,reelY+reelH/2,72);
+          drawSymbol(spin.result[i],x+reelW/2,reelY+reelH/2,72);
         } else {
           const speed=reaching&&i===1?3.1:11.5;
           const travel=(spin.time*speed+i*.31)%1;
           const base=Math.floor(spin.time*speed+i*3);
           for(let k=-1;k<=2;k++){
             const digit=wrapDigit(base+k+1);
-            drawDigit(digit,x+reelW/2,reelY+reelH/2+(k+travel)*92,66);
+            drawSymbol(digit,x+reelW/2,reelY+reelH/2+(k+travel)*92,66);
           }
         }
         ctx.restore();
@@ -628,186 +597,309 @@
       ctx.fillStyle='#fff';ctx.font='900 25px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';
       let caption='図 柄 変 動 中';
       if (reaching) caption='リ ー チ';
-      if (spin.phase==='result') caption=spin.win?'3 つ 揃 い！':'ハ ズ レ';
+      if (['result','ending'].includes(spin.phase)) caption=spin.win?'3 つ 揃 い！':'ハ ズ レ';
       ctx.fillText(caption,512,lcd.y+264);
     }
 
-    function drawDigit(digit,x,y,size) {
-      if (skinName === 'neko' && nekoSymbolsReady && digit >= 1 && digit <= 7) {
-        const index = digit - 1;
-        const sx = (index % 4) * 256;
-        const sy = Math.floor(index / 4) * 512;
-        const boxW = size * 1.14, boxH = size * 1.42;
-        ctx.save();
-        ctx.beginPath();ctx.roundRect(x-boxW/2,y-boxH/2,boxW,boxH,size*.12);ctx.clip();
-        ctx.drawImage(nekoSymbols,sx,sy,256,512,x-boxW/2,y-boxH/2,boxW,boxH);
-        ctx.restore();
-        return;
-      }
-      ctx.font=`1000 ${size}px ui-rounded,"Hiragino Sans",system-ui`;
-      ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-      ctx.lineWidth=Math.max(7,size*.12);ctx.strokeStyle='#fff';ctx.strokeText(String(digit),x,y);
-      ctx.lineWidth=Math.max(3,size*.045);ctx.strokeStyle=skin.accent;ctx.strokeText(String(digit),x,y);
-      ctx.fillStyle=skin.symbol;ctx.fillText(String(digit),x,y);
-    }
-
-    const spFrame = {x:51,y:275,w:922,h:890};
-
-    function drawHeroCard(pose,x,y,w,h,rotation=0) {
+    // Seven cells; the empty eighth cell is never sampled. Keep each symbol's aspect ratio.
+    function drawSymbol(digit,x,y,size) {
       ctx.save();
-      ctx.translate(x+w/2,y+h/2);ctx.rotate(rotation);ctx.translate(-w/2,-h/2);
-      ctx.shadowColor='rgba(0,0,0,.72)';ctx.shadowBlur=28;ctx.shadowOffsetY=16;
-      roundRect(0,0,w,h,34,'#fff',skin.accent);
-      ctx.shadowColor='transparent';
-      ctx.save();ctx.beginPath();ctx.roundRect(10,10,w-20,h-20,25);ctx.clip();
-      if (skinName === 'neko' && nekoPosesReady) {
-        const sx=(pose%2)*512, sy=Math.floor(pose/2)*512;
-        ctx.drawImage(nekoPoses,sx,sy,512,512,10,10,w-20,h-20);
+      if (skinName === 'neko' && symbols.complete && symbols.naturalWidth) {
+        const cellW = symbols.naturalWidth/4, cellH = symbols.naturalHeight/2;
+        const index = wrapDigit(digit)-1;
+        // Artwork sits within the middle of each 256 x 512 cell.
+        const top = index < 4 ? .29 : .065;
+        const cropH = cellH*.66, h = size*1.28, w = h*cellW/cropH;
+        ctx.beginPath(); ctx.roundRect(x-w/2,y-h/2,w,h,10); ctx.clip();
+        ctx.drawImage(symbols,(index%4)*cellW,Math.floor(index/4)*cellH+cellH*top,cellW,cropH,x-w/2,y-h/2,w,h);
       } else {
-        const emoji=skinName==='kaeru'?'🐸':skinName==='inu'?'🐶':'🐱';
-        const g=ctx.createLinearGradient(0,0,w,h);g.addColorStop(0,skin.main);g.addColorStop(1,'#171025');
-        ctx.fillStyle=g;ctx.fillRect(10,10,w-20,h-20);
-        ctx.fillStyle='#fff';ctx.font=`900 ${Math.min(w,h)*.46}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(emoji,w/2,h*.48);
-        ctx.font=`900 ${Math.min(w,h)*.1}px system-ui`;ctx.fillText(['いくぞ！','びっくり！','激アツ！','やった！'][pose],w/2,h*.84);
-      }
-      ctx.restore();
-      ctx.lineWidth=10;ctx.strokeStyle='#fff';ctx.beginPath();ctx.roundRect(5,5,w-10,h-10,29);ctx.stroke();
-      ctx.lineWidth=6;ctx.strokeStyle=skin.accent;ctx.stroke();
-      ctx.restore();
-    }
-
-    function drawFish(x,y,scale=1,flip=false) {
-      ctx.save();ctx.translate(x,y);ctx.scale(flip?-scale:scale,scale);
-      ctx.fillStyle='#ffd43b';ctx.strokeStyle='#681f72';ctx.lineWidth=7;
-      ctx.beginPath();ctx.ellipse(0,0,62,34,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(54,0);ctx.lineTo(102,-38);ctx.lineTo(95,35);ctx.closePath();ctx.fill();ctx.stroke();
-      ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(-30,-9,10,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#111';ctx.beginPath();ctx.arc(-33,-9,4,0,Math.PI*2);ctx.fill();
-      ctx.strokeStyle='#ff754b';ctx.lineWidth=5;[-5,15,35].forEach(px=>{ctx.beginPath();ctx.moveTo(px,-25);ctx.lineTo(px,25);ctx.stroke();});
-      ctx.restore();
-    }
-
-    function drawMouse(x,y,scale=1,angle=0) {
-      ctx.save();ctx.translate(x,y);ctx.rotate(angle);ctx.scale(scale,scale);
-      ctx.strokeStyle='#33273b';ctx.lineWidth=7;ctx.fillStyle='#aaa6b8';
-      ctx.beginPath();ctx.ellipse(0,5,55,38,0,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.arc(-42,-21,21,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.fillStyle='#f7a4c5';ctx.beginPath();ctx.arc(-48,-25,10,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#111';ctx.beginPath();ctx.arc(-48,-11,5,0,Math.PI*2);ctx.fill();
-      ctx.fillStyle='#ff7894';ctx.beginPath();ctx.arc(-66,-6,6,0,Math.PI*2);ctx.fill();
-      ctx.strokeStyle='#aaa6b8';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(48,8);ctx.bezierCurveTo(95,2,88,-55,125,-48);ctx.stroke();
-      ctx.restore();
-    }
-
-    function drawBurst(cx,cy,r,time) {
-      ctx.save();ctx.translate(cx,cy);ctx.rotate(time*3);
-      for(let i=0;i<24;i++){
-        const a=i*Math.PI/12;
-        ctx.strokeStyle=i%2?'#fff':skin.accent;ctx.lineWidth=i%2?6:12;
-        ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.2,Math.sin(a)*r*.2);ctx.lineTo(Math.cos(a)*r,Math.sin(a)*r);ctx.stroke();
+        const labels = ['魚','鈴','福','桜','糸','缶','掌'];
+        ctx.fillStyle=skin.symbol; ctx.strokeStyle=skin.accent; ctx.lineWidth=4;
+        ctx.beginPath(); ctx.arc(x,y,size*.43,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.font=`900 ${size*.5}px system-ui`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillStyle='#fff'; ctx.fillText(labels[wrapDigit(digit)-1],x,y);
       }
       ctx.restore();
     }
 
-    function drawPushButton() {
-      const pulse=1+.075*Math.sin(performance.now()/90);
-      ctx.save();ctx.translate(512,1103);ctx.scale(pulse,pulse);
-      ctx.shadowColor=skin.accent;ctx.shadowBlur=34;
-      const g=ctx.createRadialGradient(-35,-35,5,0,0,150);g.addColorStop(0,'#fff');g.addColorStop(.28,'#fff36b');g.addColorStop(.62,'#ff4f3e');g.addColorStop(1,'#7e0019');
-      ctx.beginPath();ctx.ellipse(0,0,175,82,0,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=12;ctx.stroke();
-      ctx.strokeStyle=skin.accent;ctx.lineWidth=6;ctx.stroke();ctx.shadowColor='transparent';
-      ctx.fillStyle='#fff';ctx.font='1000 60px ui-rounded,system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=12;ctx.strokeStyle='#690015';ctx.strokeText('PUSH',0,2);ctx.fillText('PUSH',0,2);
-      ctx.restore();
-      ctx.fillStyle='#fff';ctx.font='1000 48px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=11;ctx.strokeStyle='#25000d';ctx.strokeText('押せ！',512,980);ctx.fillText('押せ！',512,980);
-      ctx.font='800 21px system-ui';ctx.fillStyle='#fff7ce';ctx.fillText('SPACE / クリック / タップ',512,1212);
+    function lettering(text,x,y,size=40,color='#fff',stroke='#1c092c') {
+      ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+      ctx.font=`1000 ${size}px "Hiragino Sans",system-ui`;
+      ctx.lineWidth=Math.max(4,size*.12); ctx.strokeStyle=stroke; ctx.strokeText(text,x,y);
+      ctx.fillStyle=color; ctx.fillText(text,x,y); ctx.restore();
     }
 
-    function drawSpReels(t) {
-      const reelW=205,reelH=224,gap=28,startX=154;
-      const slow=Math.max(.35,7-t);
-      const base=Math.floor(t*slow);
-      const travel=(t*slow)%1;
-      for(let i=0;i<3;i++){
-        const x=startX+i*(reelW+gap);
-        roundRect(x,700,reelW,reelH,22,'rgba(255,252,239,.96)',skin.accent);
-        ctx.save();ctx.beginPath();ctx.roundRect(x+6,706,reelW-12,reelH-12,16);ctx.clip();
-        if(t>5.15){drawDigit(spin.result[0],x+reelW/2,812,135);}
-        else for(let k=-1;k<=2;k++) drawDigit(wrapDigit(base+k+1),x+reelW/2,812+(k+travel)*155,120);
+    function drawPose(pose,x,y,size,angle=0) {
+      ctx.save(); ctx.translate(x,y); ctx.rotate(angle);
+      ctx.shadowColor='#000a'; ctx.shadowBlur=24; ctx.shadowOffsetY=12;
+      roundRect(-size/2-8,-size/2-8,size+16,size+16,30,'#fff');
+      ctx.shadowColor='transparent'; ctx.shadowOffsetY=0;
+      roundRect(-size/2-3,-size/2-3,size+6,size+6,25,skin.main);
+      ctx.save(); ctx.beginPath(); ctx.roundRect(-size/2+3,-size/2+3,size-6,size-6,21); ctx.clip();
+      if (skinName === 'neko' && poses.complete && poses.naturalWidth) {
+        const sw=poses.naturalWidth/2, sh=poses.naturalHeight/2;
+        ctx.drawImage(poses,(pose%2)*sw,Math.floor(pose/2)*sh,sw,sh,-size/2,-size/2,size,size);
+      } else {
+        const g=ctx.createLinearGradient(0,-size/2,0,size/2);
+        g.addColorStop(0,skin.main); g.addColorStop(1,'#17102b');
+        ctx.fillStyle=g; ctx.fillRect(-size/2,-size/2,size,size);
+        ctx.scale(size/300,size/300);
+        drawMascot(pose);
+      }
+      ctx.restore();
+      ctx.strokeStyle=skin.accent; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.roundRect(-size/2,-size/2,size,size,24); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawMascot(pose) {
+      const frog=skinName==='kaeru';
+      ctx.fillStyle=frog?'#9edf70':'#ffc783'; ctx.strokeStyle='#392345'; ctx.lineWidth=5;
+      for (const side of [-1,1]) {
+        ctx.beginPath(); ctx.ellipse(side*70,-63,frog?37:27,frog?37:65,side*.4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      }
+      ctx.beginPath(); ctx.ellipse(0,2,105,85,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      for (const side of [-1,1]) {
+        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.ellipse(side*43,-20,24,30,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#251528'; ctx.beginPath(); ctx.arc(side*43,-16,pose===1?14:10,0,Math.PI*2); ctx.fill();
+        if (pose===2) { ctx.beginPath(); ctx.moveTo(side*65,-54); ctx.lineTo(side*26,-39); ctx.stroke(); }
+      }
+      ctx.fillStyle='#ee668c'; ctx.beginPath(); ctx.ellipse(0,37,pose===1?18:36,pose===3?29:18,0,0,Math.PI*2); ctx.fill();
+      lettering(['いくよ！','わっ！','全力！','やった！'][pose],0,119,30,skin.accent);
+    }
+
+    function drawFish(x,y,size=80,direction=1) {
+      ctx.save(); ctx.translate(x,y); ctx.scale(direction*size/100,size/100);
+      ctx.lineWidth=5; ctx.strokeStyle='#164b6d';
+      ctx.fillStyle='#6ee8ff'; ctx.beginPath(); ctx.moveTo(-35,0); ctx.lineTo(-78,-36); ctx.lineTo(-78,36); ctx.closePath(); ctx.fill(); ctx.stroke();
+      const g=ctx.createLinearGradient(0,-35,0,35); g.addColorStop(0,'#e2fcff'); g.addColorStop(.5,'#55dcf6'); g.addColorStop(1,'#2577d5');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.ellipse(0,0,55,32,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(29,-9,12,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#10264a'; ctx.beginPath(); ctx.arc(33,-8,6,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='#2189b2'; ctx.beginPath(); ctx.moveTo(-5,-21); ctx.quadraticCurveTo(-20,0,-5,21); ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawMouse(x,y,size=100,angle=0) {
+      ctx.save(); ctx.translate(x,y); ctx.rotate(angle); ctx.scale(size/100,size/100);
+      ctx.strokeStyle='#eaa1bf'; ctx.lineWidth=9; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(42,15); ctx.bezierCurveTo(125,85,112,-49,152,-11); ctx.stroke();
+      ctx.fillStyle='#c0b6d4'; ctx.strokeStyle='#352947'; ctx.lineWidth=5;
+      ctx.beginPath(); ctx.ellipse(0,0,62,39,-.08,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      for (const x of [-25,14]) {
+        ctx.beginPath(); ctx.arc(x,-38,26,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.save(); ctx.fillStyle='#f5bad2'; ctx.beginPath(); ctx.arc(x,-38,16,0,Math.PI*2); ctx.fill(); ctx.restore();
+      }
+      ctx.fillStyle='#191224'; ctx.beginPath(); ctx.arc(-34,-6,7,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#ed729b'; ctx.beginPath(); ctx.arc(-61,11,8,0,Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    function rays(x,y,time,color=skin.accent) {
+      ctx.save(); ctx.translate(x,y);
+      for(let i=0;i<30;i++) {
+        const a=i*Math.PI/15+time*.15, inner=90+(i%4)*25;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);
+        ctx.lineTo(Math.cos(a-.012)*1100,Math.sin(a-.012)*1100);
+        ctx.lineTo(Math.cos(a+.012)*1100,Math.sin(a+.012)*1100); ctx.closePath();
+        ctx.fillStyle=i%2?color+'66':'#ffffff44'; ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function spReels(y,time,synced=false,settled=false,size=94) {
+      for(let i=0;i<3;i++) {
+        const x=450+(i-1)*(size+32);
+        roundRect(x-size/2-6,y-size*.7,size+12,size*1.4,16,'#fff6e8',skin.accent);
+        ctx.save(); ctx.beginPath(); ctx.roundRect(x-size/2,y-size*.66,size,size*1.32,10); ctx.clip();
+        if (settled) drawSymbol(spin.result[i],x,y,size*.9);
+        else {
+          // The same integrated travel for every reel, easing to an exact symbol.
+          const p=Math.min(1,time/6.3), travel=28*(1-Math.pow(1-p,3));
+          const base=Math.floor(travel), offset=travel-base;
+          for(let k=-1;k<=1;k++) drawSymbol(wrapDigit(spin.result[0]+base+k+(synced?0:i*2)),x,y+(offset-k)*size*1.4,size*.9);
+        }
         ctx.restore();
       }
     }
 
-    function drawCracks(progress) {
-      ctx.save();ctx.translate(512,715);ctx.strokeStyle=`rgba(255,255,255,${.35+.65*progress})`;ctx.lineWidth=8;ctx.shadowColor=skin.accent;ctx.shadowBlur=18;
-      for(let i=0;i<14;i++){
-        const a=i*Math.PI/7+.13*Math.sin(i*8);ctx.beginPath();ctx.moveTo(0,0);
-        const r1=140*progress,r2=430*progress;
-        ctx.lineTo(Math.cos(a)*r1,Math.sin(a)*r1);ctx.lineTo(Math.cos(a+.13*(i%2?1:-1))*r2,Math.sin(a+.13*(i%2?1:-1))*r2);ctx.stroke();
+    function drawFishStory(t,outcome=false) {
+      const action=spin.phase==='climax' ? Math.min(1,spin.time/1.1) : outcome?1:0;
+      const chase=Math.min(t,5.6);
+      const fishX=450+Math.sin(chase*2.1)*235;
+      const catX=450+Math.sin(chase*2.1-.85)*225;
+      const river=ctx.createLinearGradient(0,220,0,560);
+      river.addColorStop(0,'#122f56'); river.addColorStop(1,'#36c4d3');
+      roundRect(30,202,840,335,30,river);
+      for(let i=0;i<11;i++) {
+        ctx.strokeStyle='#d3ffff44'; ctx.lineWidth=3;
+        ctx.beginPath();
+        for(let x=40;x<=860;x+=12) { const y=244+i*26+Math.sin(x/42+t*3+i)*5; if(x===40)ctx.moveTo(x,y);else ctx.lineTo(x,y); }
+        ctx.stroke();
       }
-      ctx.restore();
+      if (action) {
+        const leap=Math.sin(action*Math.PI)*155;
+        drawPose(action>.7 ? (spin.win?3:1) : 2,catX+(450-catX)*action,390-leap,280,-.14*Math.sin(action*Math.PI));
+        const escape=fishX+(1100-fishX)*action;
+        drawFish(spin.win ? fishX+(540-fishX)*action : escape,spin.win?280+130*action-leap:270-160*action,85,1);
+        if (spin.win && action>.7) rays(530,365,action,'#ffd75c');
+      } else {
+        for(let i=0;i<4;i++) {
+          ctx.fillStyle='#ffffff55'; ctx.beginPath(); ctx.ellipse(catX-90-i*25,513+i%2*8,13-i*2,4,0,0,Math.PI*2); ctx.fill();
+        }
+        drawPose(chase<2.4?0:1,catX,395+Math.sin(chase*8)*9,264,Math.sin(chase*2.1)*.08);
+        drawFish(fishX,263+Math.sin(chase*3.5)*22,83,Math.cos(chase*2.1)>=0?1:-1);
+      }
+      lettering(outcome?(spin.win?'つかまえた！':'逃げちゃった…'):action?'届け、この一跳び！':t<2.4?'おさかな、待って〜！':'いまだ！ ジャンプのチャンス！',450,169,34,'#e2fcff');
     }
 
-    function drawSpReach() {
-      if (!spin || !['develop','spStory','push','spOutcome','zenkaiten','spMiss','revivalText','revivalBreak'].includes(spin.phase)) return;
-      const f=spFrame, t=spin.time;
-      ctx.save();
-      ctx.fillStyle=`rgba(0,0,8,${spin.phase==='develop'?Math.min(.82,t*4):.82})`;ctx.fillRect(0,0,W,H);
-      ctx.shadowColor='rgba(0,0,0,.8)';ctx.shadowBlur=42;
-      roundRect(f.x,f.y,f.w,f.h,38,'#090512',skin.accent);ctx.shadowColor='transparent';
-      ctx.save();ctx.beginPath();ctx.roundRect(f.x+8,f.y+8,f.w-16,f.h-16,31);ctx.clip();
+    function drawPunchStory(t,outcome=false) {
+      const action=spin.phase==='climax' ? Math.min(1,spin.time/1.1) : outcome?1:0;
+      const g=ctx.createLinearGradient(0,200,0,550); g.addColorStop(0,'#3d153a');g.addColorStop(1,'#b44734');
+      roundRect(30,202,840,335,30,g);
+      ctx.fillStyle='#ffc67b22'; ctx.beginPath(); ctx.ellipse(450,517,365,28,0,0,Math.PI*2); ctx.fill();
+      if(action) rays(540,360,spin.time,'#ffd474');
+      drawPose(action>.75 ? (spin.win?3:1) : 2,265+Math.sin(action*Math.PI)*160,388,286,action?-.12*Math.sin(action*Math.PI):-.03);
+      const mouseX=action ? (spin.win?665+action*550:665-Math.sin(action*Math.PI)*90) : 1100-Math.min(1,t/1.9)*435;
+      drawMouse(mouseX,450-(spin.win?Math.sin(action*Math.PI/2)*310:Math.sin(action*Math.PI)*95),100,spin.win?action*8:0);
+      if(action>0 && action<.8) {
+        const x=450+Math.sin(action*Math.PI)*150;
+        ctx.save(); ctx.translate(x,370); ctx.scale(1+action,1+action);
+        ctx.fillStyle='#fff2ce';ctx.strokeStyle=skin.accent;ctx.lineWidth=7;
+        ctx.beginPath();ctx.ellipse(0,0,45,37,-.3,0,Math.PI*2);ctx.fill();ctx.stroke();
+        for(let i=0;i<3;i++){ctx.beginPath();ctx.arc(-29+i*27,-29,18,0,Math.PI*2);ctx.fill();ctx.stroke();}
+        ctx.restore();
+        lettering(spin.win?'ドカーン！':'スカッ…',530,257,48,spin.win?'#ffe572':'#ddd');
+      } else if(!action && t>=2.6) {
+        const n=Math.max(1,3-Math.floor(t-2.6));
+        const scale=1+(1-((t-2.6)%1))*.3;
+        lettering(String(n),500,325,105*scale,'#fff2a8');
+      } else if(!action) lettering('VS',485,350,72,'#ffe07a');
+      lettering(outcome?(spin.win?'一撃、ねこ勝利！':'かわされた…'):action?'必殺！ 猫パンチ！':t<2.6?'いたずらネズミ、登場！':'気合をためろ…！',450,169,34,'#ffe2be');
+    }
 
-      if (spin.phase === 'develop') {
-        const reveal=Math.min(1,t/.28);
-        ctx.fillStyle=`rgba(0,0,0,${1-reveal*.25})`;ctx.fillRect(f.x,f.y,f.w,f.h);
-        const cardW=760*reveal;
-        roundRect(512-cardW/2,560,cardW,250,30,'rgba(20,4,28,.96)',skin.accent);
-        if(reveal>.55){
-          ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
-          ctx.font='1000 72px system-ui';ctx.lineWidth=16;ctx.strokeStyle='#18001f';ctx.strokeText('にゃんこSPリーチ',512,645);ctx.fillStyle='#fff';ctx.fillText('にゃんこSPリーチ',512,645);
-          const title=spin.spType==='fish'?'魚 と り':spin.spType==='punch'?'猫 パ ン チ':'全 回 転';
-          ctx.font='1000 52px system-ui';ctx.fillStyle=skin.accent;ctx.fillText(title,512,742);
-        }
-      } else if (spin.phase === 'zenkaiten') {
-        const rainbow=ctx.createLinearGradient(f.x,f.y,f.x+f.w,f.y+f.h);
-        ['#ff334d','#ffb52d','#fff45c','#4cff78','#47dfff','#825bff','#ff5ccc','#ff334d'].forEach((c,i)=>rainbow.addColorStop(i/7,c));
-        ctx.fillStyle=rainbow;ctx.globalAlpha=.72;ctx.fillRect(f.x,f.y,f.w,f.h);ctx.globalAlpha=1;
-        drawHeroCard(3,357,320,310,310,.02*Math.sin(t*5));
-        ctx.font='1000 70px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineWidth=18;ctx.strokeStyle='#5b075c';ctx.strokeText('祝・全回転',512,655);ctx.fillStyle='#fff';ctx.fillText('祝・全回転',512,655);
-        drawSpReels(t);
+    function drawZenkaiten(t,settled=false) {
+      const g=ctx.createLinearGradient(0,0,900,680);
+      ['#ff518b','#ffa638','#eee768','#66e5b5','#61b9ff','#a174f4','#ff74c8'].forEach((c,i)=>g.addColorStop(i/6,c));
+      ctx.globalAlpha=.85; roundRect(25,142,850,560,30,g);ctx.globalAlpha=1;
+      rays(450,350,t,'#fff0a4');
+      drawPose(3,450,337,285,Math.sin(t*1.6)*.04);
+      for(let i=0;i<24;i++) {
+        const x=50+(i*137)%800,y=180+(i*79+t*45)%300;
+        ctx.fillStyle=i%2?'#fff':'#ffe870';ctx.fillRect(x,y,5+i%3,12);
+      }
+      lettering('祝福の、全回転',450,174,37,'#fff7b2');
+      spReels(560,t,true,settled || t>=6.3,110);
+      lettering('大当たり確定',450,663,26,'#fff');
+    }
+
+    function drawRevival(t) {
+      const cracked=t>=.85, restored=t>=1.25;
+      ctx.fillStyle='#080515';ctx.fillRect(15,138,870,582);
+      if(restored) {
+        rays(450,375,t,'#ffd850'); drawPose(3,450,352,285);
+        spReels(573,0,false,true,106);
+        lettering('復 活 大 当 た り',450,180,53,'#ffe68e');
       } else {
-        const outcome=spin.phase==='spOutcome';
-        const success=spin.win;
-        const miss=['spMiss','revivalText','revivalBreak'].includes(spin.phase);
-        const isFish=spin.spType==='fish';
-        const bgGrad=ctx.createLinearGradient(f.x,f.y,f.x,f.y+f.h);bgGrad.addColorStop(0,isFish?'#154c75':'#44124f');bgGrad.addColorStop(1,'#08030e');ctx.fillStyle=bgGrad;ctx.fillRect(f.x,f.y,f.w,f.h);
-        ctx.fillStyle='rgba(255,255,255,.08)';for(let i=0;i<18;i++){ctx.beginPath();ctx.arc(f.x+(i*151+t*55)%f.w,f.y+80+(i*97)%700,8+(i%4)*5,0,Math.PI*2);ctx.fill();}
-        ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='1000 54px system-ui';ctx.lineWidth=13;ctx.strokeStyle='#18001f';
-        const sceneTitle=isFish?'魚をつかまえろ！':'必殺・猫パンチ！';ctx.strokeText(sceneTitle,512,342);ctx.fillStyle='#fff';ctx.fillText(sceneTitle,512,342);
-
-        if (isFish) {
-          if(outcome && success){drawHeroCard(3,175,420,390,390,-.035);drawFish(675,620,1.2);}
-          else if(outcome || miss){drawHeroCard(1,155,430,370,370,-.04);drawFish(900+Math.min(t,1)*250,610,1.1);}
-          else {const chaseT=spin.phase==='spStory'?t:4;drawHeroCard(chaseT>2.45?1:0,110+Math.min(290,chaseT*65),455,340,340,.025*Math.sin(chaseT*5));drawFish(785-Math.min(260,chaseT*48),640+Math.sin(chaseT*4)*45,1);}
-        } else {
-          if(outcome){
-            drawHeroCard(2,120,430,380,380,-.055);drawBurst(620,630,330,t);
-            if(success) drawMouse(660+Math.min(1,t)*390,600-Math.min(1,t)*250,1.05,-t*3); else drawMouse(760,610,1.05);
-          } else if(miss){drawHeroCard(1,130,435,370,370,-.04);drawMouse(760,610,1.05);}
-          else {drawHeroCard(2,110,445,370,370,-.025);drawMouse(770,610,1.05);if(spin.phase==='spStory'&&t>=1.1){const n=t<2.05?'3':t<2.95?'2':t<3.85?'1':'!';ctx.font='1000 140px ui-rounded,system-ui';ctx.lineWidth=24;ctx.strokeStyle='#250016';ctx.strokeText(n,540,620);ctx.fillStyle='#fff44f';ctx.fillText(n,540,620);}}
+        drawPose(1,450,352,280);ctx.fillStyle='#05020dc0';ctx.fillRect(25,142,850,550);
+        lettering('まだ終わらない…',450,389,50,'#fff');
+      }
+      if(cracked) {
+        ctx.save(); ctx.globalAlpha=restored?Math.max(0,1-(t-1.25)/.7):1;
+        for(let i=0;i<13;i++) {
+          const a=i*Math.PI*2/13;
+          ctx.strokeStyle=i%2?'#fff':'#91dbff';ctx.lineWidth=i%3+2;ctx.beginPath();ctx.moveTo(450,375);
+          for(let j=1;j<=4;j++) {
+            const d=j*165, twist=a+(j%2?.08:-.06);
+            ctx.lineTo(450+Math.cos(twist)*d,375+Math.sin(twist)*d);
+          }
+          ctx.stroke();
+          if(restored) {
+            const fly=(t-1.25)*650;
+            ctx.fillStyle='#c2efff66';ctx.beginPath();ctx.moveTo(450+Math.cos(a)*fly,375+Math.sin(a)*fly);
+            ctx.lineTo(450+Math.cos(a-.14)*(fly+130),375+Math.sin(a-.14)*(fly+130));
+            ctx.lineTo(450+Math.cos(a+.14)*(fly+170),375+Math.sin(a+.14)*(fly+170));ctx.closePath();ctx.fill();
+          }
         }
+        ctx.restore();
+      }
+    }
 
-        if(outcome){
-          ctx.font='1000 78px system-ui';ctx.lineWidth=20;ctx.strokeStyle='#250016';const word=success?'成功！':'空振り…';ctx.strokeText(word,512,900);ctx.fillStyle=success?'#fff44f':'#c9c2d2';ctx.fillText(word,512,900);
+    function drawPush() {
+      const b=pushButton, pulse=1+Math.sin(spin.time*8)*.035;
+      ctx.save();ctx.translate(b.x+b.w/2,b.y+b.h/2);ctx.scale(pulse,pulse);
+      ctx.shadowColor=skin.accent;ctx.shadowBlur=32;
+      roundRect(-b.w/2-8,-b.h/2-8,b.w+16,b.h+16,57,'#fff',skin.accent);
+      ctx.shadowBlur=0;
+      const g=ctx.createLinearGradient(0,-b.h/2,0,b.h/2);g.addColorStop(0,'#fff5d3');g.addColorStop(.3,'#ffe19d');g.addColorStop(1,'#e57c35');
+      roundRect(-b.w/2,-b.h/2,b.w,b.h,52,g,skin.main);
+      lettering('PUSH',0,1,60,'#fff',skin.main);
+      ctx.restore();
+      lettering('押せ！',W/2,b.y-42,43,'#ffe98f');
+      lettering(`Space / タップ  ·  あと ${Math.max(1,Math.ceil(3-spin.time))} 秒`,W/2,b.y+b.h+27,22,'#fff');
+      ctx.fillStyle='#ffffff44';ctx.fillRect(b.x,b.y+b.h+48,b.w,5);
+      ctx.fillStyle=skin.accent;ctx.fillRect(b.x,b.y+b.h+48,b.w*Math.max(0,1-spin.time/3),5);
+    }
+
+    function drawSP() {
+      if(!spin || !spPhases.includes(spin.phase)) return;
+      const phase=spin.phase,t=spin.time;
+      const opening=phase==='develop';
+      const p=opening?Math.min(1,t/.34):1, ease=1-Math.pow(1-p,3);
+      ctx.save();ctx.fillStyle=`rgba(3,0,14,${.78*ease})`;ctx.fillRect(0,0,W,H);
+      const x=lcd.x+(spScreen.x-lcd.x)*ease, y=lcd.y+(spScreen.y-lcd.y)*ease;
+      const w=lcd.w+(spScreen.w-lcd.w)*ease, h=lcd.h+(spScreen.h-lcd.h)*ease;
+      ctx.shadowColor=skin.accent;ctx.shadowBlur=35;
+      roundRect(x-5,y-5,w+10,h+10,38,'#fff',skin.accent);ctx.shadowBlur=0;
+      ctx.translate(x,y);ctx.scale(w/900,h/750);
+      ctx.beginPath();ctx.roundRect(0,0,900,750,32);ctx.clip();
+      const g=ctx.createLinearGradient(0,0,900,750);g.addColorStop(0,'#241335');g.addColorStop(.52,'#0e102b');g.addColorStop(1,skin.main);
+      ctx.fillStyle=g;ctx.fillRect(0,0,900,750);
+      for(let i=0;i<28;i++) {
+        const sx=(i*173+spin.elapsed*17)%900, sy=(i*91+spin.elapsed*23)%750;
+        ctx.fillStyle=i%3?'#ffffff30':skin.accent;ctx.beginPath();ctx.arc(sx,sy,i%3+1,0,Math.PI*2);ctx.fill();
+      }
+      if(opening) {
+        rays(450,375,t);
+        const k=.88+Math.min(1,t/.6)*.12;
+        ctx.save();ctx.translate(450,365);ctx.scale(k,k);
+        lettering('発 展',0,-135,38,'#ffdaa0');
+        lettering(skinName==='neko'?'にゃんこSPリーチ':`${skin.title} SPリーチ`,0,-35,61,skin.accent);
+        lettering(reachNames[spin.story],0,77,88,'#fff');ctx.restore();
+        lettering('運命を変える、一撃へ。',450,570,26,'#e3d6f5');
+      } else {
+        ctx.fillStyle='#ffffff12';ctx.fillRect(0,0,900,123);
+        ctx.fillStyle=skin.accent;ctx.fillRect(30,31,6,65);
+        ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillStyle='#d1bfdc';ctx.font='800 20px system-ui';
+        ctx.fillText(skinName==='neko'?'にゃんこSPリーチ':`${skin.title} SPリーチ`,55,44);
+        ctx.fillStyle='#fff';ctx.font='1000 39px system-ui';ctx.fillText(reachNames[spin.story],55,84);
+        ctx.textAlign='right';ctx.fillStyle=skin.accent;ctx.font='900 21px system-ui';
+        ctx.fillText(phase==='revival'?'もう一度！':spin.story==='zenkaiten'?'PREMIUM':phase==='push'?'決めろ！':'SPECIAL REACH',851,65);
+        const outcome=phase==='spResult';
+        if(phase==='revival') drawRevival(t);
+        else if(spin.story==='zenkaiten') drawZenkaiten(outcome?6.8:t,outcome);
+        else {
+          const storyTime=phase==='story'?t:5.6;
+          if(spin.story==='fish') drawFishStory(storyTime,outcome);
+          else drawPunchStory(storyTime,outcome);
+          if(outcome) {
+            if(!spin.win) { ctx.fillStyle='#08071770';ctx.fillRect(25,202,850,335); }
+            lettering(spin.win?'大成功！':'ハズレ…',450,574,60,spin.win?'#ffe493':'#c8c2d9');
+            spReels(666,0,false,true,66);
+          } else if(phase!=='push') {
+            lettering(phase==='climax'?'運命の一撃！':'想いを込めて、チャンスをつかめ。',450,596,29,'#ffe9c7');
+            const progress=Math.min(1,storyTime/5.6);
+            roundRect(220,645,460,7,3,'#ffffff25');roundRect(220,645,460*progress,7,3,skin.accent);
+            lettering('発展  ›  ストーリー  ›  PUSH  ›  結果',450,704,21,'#e0c9ec');
+          }
         }
-        if(spin.phase==='push') drawPushButton();
-        if(spin.phase==='spMiss') {ctx.fillStyle='rgba(0,0,0,.58)';ctx.fillRect(f.x,f.y,f.w,f.h);ctx.font='1000 92px system-ui';ctx.lineWidth=22;ctx.strokeStyle='#111';ctx.strokeText('ハ ズ レ',512,730);ctx.fillStyle='#b9afc5';ctx.fillText('ハ ズ レ',512,730);}
-        if(spin.phase==='revivalText') {ctx.fillStyle='rgba(0,0,0,.86)';ctx.fillRect(f.x,f.y,f.w,f.h);ctx.font='900 62px system-ui';ctx.fillStyle='#fff';ctx.fillText('まだ終わらない…',512,720);}
-        if(spin.phase==='revivalBreak') {ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillRect(f.x,f.y,f.w,f.h);drawCracks(Math.min(1,t/.75));ctx.font='1000 80px system-ui';ctx.lineWidth=20;ctx.strokeStyle='#4c004c';ctx.strokeText('復 活！',512,720);ctx.fillStyle='#fff44f';ctx.fillText('復 活！',512,720);}
       }
       ctx.restore();
-      ctx.lineWidth=12;ctx.strokeStyle='#fff';ctx.beginPath();ctx.roundRect(f.x+3,f.y+3,f.w-6,f.h-6,35);ctx.stroke();ctx.lineWidth=7;ctx.strokeStyle=skin.accent;ctx.stroke();
-      if(spin.flash>0){ctx.fillStyle=`rgba(255,255,255,${Math.min(1,spin.flash*3.3)})`;ctx.fillRect(0,0,W,H);}
-      ctx.restore();
+      if(phase==='push') drawPush();
+      if(phase==='climax' && t<.24 || phase==='revival' && t>=1.25 && t<1.48) {
+        const flash=phase==='climax'?t:t-1.25;
+        ctx.fillStyle=`rgba(255,255,255,${Math.max(0,1-flash/.24)})`;ctx.fillRect(0,0,W,H);
+      }
     }
 
     function drawHolds() {
@@ -843,7 +935,7 @@
       ctx.rotate(-.025*Math.sin(performance.now()/80));
       const zoom=1.22+.05*Math.sin(performance.now()/170);
       ctx.globalAlpha=.88;
-      ctx.drawImage(bg,170,430,684,900,-420*zoom,-575*zoom,840*zoom,1125*zoom);
+      if (bg.complete && bg.naturalWidth) ctx.drawImage(bg,170,430,684,900,-420*zoom,-575*zoom,840*zoom,1125*zoom);
       ctx.globalAlpha=1;
       for(let i=0;i<24;i++){
         const a=i*Math.PI/12+performance.now()/1500;
@@ -933,9 +1025,13 @@
     function draw() {
       ctx.clearRect(0,0,W,H);
       ctx.save();
-      if (spin && (spin.phase==='normalReach' || spin.phase==='spOutcome' || spin.phase==='revivalBreak')) {
+      if (spin && spin.phase==='climax' && spin.story==='punch' && spin.time>.18 && spin.time<.8) {
+        const force=16*(1-spin.time/1.1);
+        ctx.translate(Math.sin(spin.time*110)*force,Math.cos(spin.time*93)*force);
+      }
+      if (spin && spin.phase==='reach') {
         const amount=3.5+2.5*Math.sin(performance.now()/73);
-        ctx.translate((Math.random()-.5)*amount,(Math.random()-.5)*amount);
+        ctx.translate(Math.sin(performance.now()/19)*amount,Math.cos(performance.now()/23)*amount);
       }
       if (bg.complete && bg.naturalWidth) ctx.drawImage(bg,0,0,W,H);
       else { ctx.fillStyle='#efe3b8';ctx.fillRect(0,0,W,H); }
@@ -950,7 +1046,7 @@
       drawReels();
       drawHolds();
       drawMessage();
-      drawSpReach();
+      drawSP();
       drawJackpot();
       ctx.restore();
       drawMute();
@@ -961,7 +1057,6 @@
       update(dt);draw();requestAnimationFrame(frame);
     }
     bg.addEventListener('error', () => { message='背景画像を読み込めません';messageTimer=999; });
-    if (requestedReach) startSpin();
     requestAnimationFrame(frame);
   })();
   </script>
