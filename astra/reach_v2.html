@@ -1,0 +1,544 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="data:,">
+<title>幻焔鳳凰 — 天翔焔舞</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 100%; min-height: 100%; background: #000; }
+  body { min-height: 100vh; min-height: 100svh; display: grid; place-items: center; overflow: hidden; }
+  canvas { display: block; width: min(100vw, 64.285714vh); width: min(100vw, 64.285714svh); height: auto; aspect-ratio: 9 / 14; outline: none; touch-action: manipulation; }
+  canvas:focus-visible { outline: 1px solid #e8bd70; outline-offset: -2px; }
+</style>
+</head>
+<body>
+<canvas id="stage" width="900" height="1400" role="img" tabindex="0" aria-label="架空機種・幻焔鳳凰。リーチ演出は自動で始まります。画面をタップ、またはEnterキーで音を有効にできます。">幻焔鳳凰のリーチ演出。Canvas対応ブラウザでご覧ください。</canvas>
+<script>
+(() => {
+  'use strict';
+
+  const W = 900, H = 1400, CX = W / 2, TAU = Math.PI * 2;
+  const MACHINE = '幻焔鳳凰';
+  const TIME = Object.freeze({ delay: 3, spin: 1.3, reach: 1.4, card: 0.8, sp: 4, result: 1.1, hold: 2 });
+  const AT = Object.freeze({
+    reach: TIME.spin,
+    card: TIME.spin + TIME.reach,
+    sp: TIME.spin + TIME.reach + TIME.card,
+    result: TIME.spin + TIME.reach + TIME.card + TIME.sp,
+    hold: TIME.spin + TIME.reach + TIME.card + TIME.sp + TIME.result,
+    end: TIME.spin + TIME.reach + TIME.card + TIME.sp + TIME.result + TIME.hold
+  });
+  const VIEW = Object.freeze({ x: 72, y: 214, w: 756, h: 981 });
+  const COLORS = ['#ff5467', '#ffae47', '#ffe496', '#8fffe2', '#71cfff', '#b389ff', '#ff94e0'];
+  const SERIF = '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif CJK JP", serif';
+  const SANS = '"Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif';
+  const PARTICLE_COUNT = 260;
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let epoch = performance.now();
+  const clamp = (v, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, v));
+  const ease = v => 1 - Math.pow(1 - clamp(v), 3);
+  const mix = (a, b, p) => a + (b - a) * p;
+  const fract = n => n - Math.floor(n);
+  const random = n => fract(Math.sin(n * 127.1 + 311.7) * 43758.5453123);
+  let phase = '', lastRendered = -Infinity, frameCount = 0, frozen = false;
+  const history = [];
+  const particles = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+    a: random(i + 1) * TAU, r: random(i + 31), speed: 75 + random(i + 71) * 340,
+    size: 1 + random(i + 131) * 4, color: COLORS[i % COLORS.length], seed: random(i + 211)
+  }));
+
+  function polygon(g, x, y, w, h, cut = 24) {
+    g.beginPath(); g.moveTo(x + cut, y); g.lineTo(x + w - cut, y);
+    g.lineTo(x + w, y + cut); g.lineTo(x + w, y + h - cut);
+    g.lineTo(x + w - cut, y + h); g.lineTo(x + cut, y + h);
+    g.lineTo(x, y + h - cut); g.lineTo(x, y + cut); g.closePath();
+  }
+  function line(g, x1, y1, x2, y2, color, width = 1) {
+    g.strokeStyle = color; g.lineWidth = width; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke();
+  }
+  function gradient(g, x, y, x2, y2, stops) {
+    const v = g.createLinearGradient(x, y, x2, y2);
+    stops.forEach((c, i) => v.addColorStop(i / (stops.length - 1), c));
+    return v;
+  }
+  function glow(g, x, y, r, color) {
+    const v = g.createRadialGradient(x, y, 0, x, y, r);
+    v.addColorStop(0, color); v.addColorStop(1, 'transparent');
+    g.fillStyle = v; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  function text(g, words, x, y, size, color, family = SERIF, weight = 900) {
+    g.font = `${weight} ${size}px ${family}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = color; g.fillText(words, x, y);
+  }
+  function tracked(g, words, x, y, size, color, spacing = 5) {
+    g.font = `500 ${size}px ${SANS}`; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillStyle = color;
+    const letters = [...words], widths = letters.map(c => g.measureText(c).width);
+    let left = x - (widths.reduce((sum, v) => sum + v, 0) + spacing * (letters.length - 1)) / 2;
+    letters.forEach((c, i) => { g.fillText(c, left, y); left += widths[i] + spacing; });
+  }
+  function metalText(words, x, y, size, rainbow = false) {
+    ctx.save(); ctx.font = `900 ${size}px ${SERIF}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#100511'; ctx.lineWidth = size * 0.12; ctx.strokeText(words, x, y + 10);
+    ctx.strokeStyle = '#c56a35'; ctx.lineWidth = size * 0.075; ctx.strokeText(words, x, y + 5);
+    ctx.strokeStyle = '#fff1b7'; ctx.lineWidth = size * 0.04; ctx.strokeText(words, x, y);
+    ctx.fillStyle = rainbow
+      ? gradient(ctx, x - size * 1.45, y - size * 0.3, x + size * 1.45, y + size * 0.25, COLORS)
+      : gradient(ctx, 0, y - size * 0.55, 0, y + size * 0.5, ['#fff8d2', '#ffe6a6', '#fff9dd', '#b87a27', '#fff2b3']);
+    ctx.fillText(words, x, y);
+    ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1; ctx.strokeText(words, x, y);
+    ctx.restore();
+  }
+  function diamond(g, x, y, r, color) {
+    g.fillStyle = color; g.beginPath(); g.moveTo(x, y - r); g.lineTo(x + r * .55, y);
+    g.lineTo(x, y + r); g.lineTo(x - r * .55, y); g.closePath(); g.fill();
+  }
+  function star(g, x, y, r, color) {
+    g.fillStyle = color; g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4, rad = i % 2 ? r * .16 : r;
+      const px = x + Math.cos(a) * rad, py = y + Math.sin(a) * rad;
+      if (!i) g.moveTo(px, py); else g.lineTo(px, py);
+    }
+    g.closePath(); g.fill();
+  }
+
+  // Static details are painted once; every visible pixel comes from Canvas 2D.
+  const cabinet = document.createElement('canvas'); cabinet.width = W; cabinet.height = H;
+  const cg = cabinet.getContext('2d');
+  cg.fillStyle = '#000'; cg.fillRect(0, 0, W, H);
+  polygon(cg, 17, 13, 866, 1374, 48);
+  cg.fillStyle = gradient(cg, 0, 0, W, H, ['#9b723b', '#fff1bc', '#322011', '#edbd6b', '#4b321a']); cg.fill();
+  polygon(cg, 24, 20, 852, 1360, 45); cg.fillStyle = '#101015'; cg.fill();
+  polygon(cg, 33, 29, 834, 1342, 40); cg.strokeStyle = '#bda16a'; cg.lineWidth = 1; cg.stroke();
+  glow(cg, CX, 113, 480, '#352329'); glow(cg, CX, 1300, 370, '#302220');
+  for (const side of [-1, 1]) {
+    cg.save(); cg.translate(CX, 75); cg.scale(side, 1);
+    for (let i = 0; i < 7; i++) {
+      cg.beginPath(); cg.moveTo(170 + i * 10, 26 + i * 5);
+      cg.quadraticCurveTo(260 + i * 12, 20, 329 + i * 3, -24 + i * 11);
+      cg.quadraticCurveTo(277, 69, 171 + i * 10, 26 + i * 5);
+      cg.fillStyle = i % 2 ? '#634b2d' : '#b99a60'; cg.fill();
+    }
+    cg.restore();
+  }
+  tracked(cg, 'P H O E N I X   A W A K E N I N G', CX, 61, 15, '#d9b781', 1);
+  text(cg, MACHINE, CX, 126, 70, gradient(cg, 0, 86, 0, 168, ['#fff5db', '#e1b571', '#fff1c2']));
+  tracked(cg, '紅 蓮 に 宿 る 、 不 滅 の 翼', CX, 182, 18, '#b99b77', 3);
+  polygon(cg, 61, 203, 778, 1002, 40);
+  cg.fillStyle = gradient(cg, 0, 203, W, 1205, ['#f9df9d', '#60452d', '#c39b58', '#fff2bf', '#745232']); cg.fill();
+  polygon(cg, 68, 210, 764, 988, 35); cg.fillStyle = '#05070f'; cg.fill();
+  line(cg, 120, 1230, 345, 1230, '#81623c'); line(cg, 555, 1230, 780, 1230, '#81623c');
+  diamond(cg, CX, 1230, 8, '#d2b174');
+  text(cg, '火は、まだ終わらない。', CX, 1282, 30, '#e7d8b7', SERIF, 500);
+  tracked(cg, 'G E N E N   H O U O U', CX, 1325, 13, '#8f7e68', 2);
+  for (const x of [46, 854]) {
+    for (let y = 243; y < 1190; y += 28) diamond(cg, x, y, 7, '#503d2c');
+    for (const y of [188, 1223]) { diamond(cg, x, y, 18, '#bc9258'); diamond(cg, x, y, 10, '#201b17'); }
+  }
+
+  const scenery = document.createElement('canvas'); scenery.width = W; scenery.height = H;
+  const bg = scenery.getContext('2d');
+  bg.fillStyle = '#060b1c'; bg.fillRect(0, 0, W, H);
+  glow(bg, 655, 419, 630, '#28225b'); glow(bg, 154, 866, 500, '#0d3c4e');
+  glow(bg, CX, 1140, 380, '#501f37');
+  for (let i = 0; i < 180; i++) {
+    const x = random(i + 441) * W, y = random(i + 991) * H;
+    bg.globalAlpha = .15 + random(i + 6) * .4; star(bg, x, y, .5 + random(i) * 2, '#edddac');
+  }
+  bg.globalAlpha = 1;
+  for (let row = 0; row < 6; row++) {
+    for (let col = -1; col < 9; col++) {
+      const x = col * 124 + row % 2 * 62, y = 1040 + row * 47;
+      for (let r = 24; r < 65; r += 12) {
+        bg.beginPath(); bg.arc(x, y, r, Math.PI, TAU); bg.strokeStyle = 'rgba(208,163,81,.1)'; bg.lineWidth = 1; bg.stroke();
+      }
+    }
+  }
+
+  function halo(t, power, rainbow = false) {
+    ctx.save(); ctx.translate(CX, 590); ctx.rotate(t * .035);
+    for (let ring = 0; ring < 3; ring++) {
+      const r = 252 + ring * 39;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU);
+      ctx.strokeStyle = `rgba(242,192,103,${.13 + power * .15})`; ctx.lineWidth = ring === 1 ? 3 : 1; ctx.stroke();
+    }
+    for (let i = 0; i < 64; i++) {
+      const a = i / 64 * TAU;
+      line(ctx, Math.cos(a) * 307, Math.sin(a) * 307, Math.cos(a) * (i % 4 ? 315 : 330), Math.sin(a) * (i % 4 ? 315 : 330), rainbow ? COLORS[i % COLORS.length] : '#8e744b', i % 4 ? 1 : 2);
+    }
+    ctx.restore();
+  }
+  function rays(t, power, rainbow = false) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.translate(CX, 599);
+    for (let i = 0; i < 42; i++) {
+      const a = i / 42 * TAU + t * .075, inner = 90, outer = 850;
+      const width = .006 + random(i + 29) * .022;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a - width) * outer, Math.sin(a - width) * outer);
+      ctx.lineTo(Math.cos(a + width) * outer, Math.sin(a + width) * outer); ctx.closePath();
+      ctx.globalAlpha = power * (.025 + random(i + 11) * .085);
+      ctx.fillStyle = rainbow ? COLORS[i % COLORS.length] : i % 3 ? '#ffcb76' : '#ff6340'; ctx.fill();
+    }
+    ctx.restore();
+  }
+  function atmosphere(t, power = 0, rainbow = false) {
+    ctx.drawImage(scenery, 0, 0);
+    glow(ctx, CX + Math.sin(t * .8) * 190, 550, 590, rainbow ? '#582181' : `rgba(177,34,43,${.14 + power * .48})`);
+    glow(ctx, 250 + Math.sin(t) * 130, 870, 420, rainbow ? '#125c79' : `rgba(234,77,27,${power * .24})`);
+    glow(ctx, 690, 620, 360, rainbow ? '#693238' : `rgba(68,19,135,${power * .45})`);
+    halo(t, power, rainbow); rays(t, .25 + power, rainbow);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 7; i++) {
+      ctx.beginPath(); ctx.moveTo(-90, 1140 + i * 20);
+      ctx.bezierCurveTo(900, 1060 - i * 60, -200, 520 + Math.sin(t + i) * 70, 1020, 280 - i * 38);
+      ctx.lineWidth = 1 + i % 3; ctx.strokeStyle = rainbow ? COLORS[i] : '#d58543'; ctx.globalAlpha = .025 + power * .055; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function feather(sx, sy, ex, ey, width, shade, bright) {
+    const dx = ex - sx, dy = ey - sy, len = Math.hypot(dx, dy);
+    const px = -dy / len * width, py = dx / len * width;
+    ctx.beginPath(); ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(sx + dx * .35 + px, sy + dy * .25 + py, ex + px * .24, ey + py * .22, ex, ey);
+    ctx.bezierCurveTo(ex - dx * .34 - px * .24, ey - dy * .15 - py * .24, sx + dx * .28 - px, sy + dy * .36 - py, sx, sy);
+    ctx.fillStyle = gradient(ctx, sx, sy, ex, ey, [shade, '#d6752a', '#f8c45e', bright]); ctx.fill();
+    ctx.strokeStyle = '#47241c'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx + dx * .55 + px * .2, sy + dy * .5, ex, ey);
+    ctx.strokeStyle = 'rgba(255,242,176,.48)'; ctx.lineWidth = .8; ctx.stroke();
+  }
+  function phoenix(x, y, scale, t, power = 1) {
+    ctx.save(); ctx.translate(x, y); ctx.scale(scale, scale);
+    // Long, curved flame plumes form the tail behind the body.
+    for (let i = 0; i < 11; i++) {
+      const spread = (i - 5) / 5, endX = spread * 225 + Math.sin(t * 1.8 + i * .6) * 22;
+      const endY = 270 + (1 - Math.abs(spread)) * 240;
+      ctx.beginPath(); ctx.moveTo(spread * 22, 52);
+      ctx.bezierCurveTo(spread * 240, 150, endX - 160 * spread, endY - 120, endX, endY);
+      ctx.bezierCurveTo(endX - 90 * spread - 22, endY - 102, spread * 135 - 18, 208, spread * 22 - 12, 52);
+      ctx.fillStyle = gradient(ctx, 0, 65, endX, endY, ['#ffe8a1', '#e39738', i % 2 ? '#bc252f' : '#e35428', '#401135']);
+      ctx.fill(); ctx.strokeStyle = '#dc934c'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    const flap = Math.sin(t * 3) * .035 * power;
+    for (const side of [-1, 1]) {
+      ctx.save(); ctx.scale(side, 1); ctx.rotate(-.05 + flap);
+      for (let i = 0; i < 15; i++) {
+        feather(28 + i * 4, 3 + i * 2.4, 390 - i * 16, -281 + i * 29, 28 - i * .8, i % 2 ? '#9d2425' : '#6a1c24', i % 3 ? '#ffedb1' : '#fff9d9');
+      }
+      for (let i = 0; i < 10; i++) {
+        feather(13, 15 + i * 2, 220 - i * 13, -164 + i * 27, 21, '#ad4b26', '#f9d381');
+      }
+      ctx.restore();
+    }
+    ctx.beginPath(); ctx.moveTo(-8, 116);
+    ctx.bezierCurveTo(-74, 41, -49, -27, -16, -67);
+    ctx.bezierCurveTo(21, -107, 8, -164, 39, -189);
+    ctx.bezierCurveTo(58, -211, 93, -191, 83, -172);
+    ctx.bezierCurveTo(78, -155, 50, -161, 44, -135);
+    ctx.bezierCurveTo(24, -70, 79, 4, 16, 105); ctx.lineTo(-8, 116);
+    ctx.fillStyle = gradient(ctx, -46, 0, 65, -80, ['#9d3127', '#f6ba53', '#fff5c4', '#d28a30']); ctx.fill();
+    ctx.strokeStyle = '#f5c971'; ctx.lineWidth = 2; ctx.stroke();
+    for (let i = 0; i < 4; i++) feather(43 + i * 4, -183, 2 + i * 22, -253 - Math.sin(i) * 23, 8, '#ce632c', '#fff4bd');
+    ctx.beginPath(); ctx.moveTo(79, -183); ctx.lineTo(112, -169); ctx.lineTo(78, -168); ctx.closePath(); ctx.fillStyle = '#ffedaa'; ctx.fill();
+    ctx.fillStyle = '#311021'; ctx.beginPath(); ctx.ellipse(68, -184, 5, 3, -.18, 0, TAU); ctx.fill();
+    star(ctx, 69, -185, 3, '#fff');
+    for (let i = 0; i < 8; i++) {
+      ctx.beginPath(); ctx.moveTo(-23, -24 + i * 13); ctx.quadraticCurveTo(0, 4 + i * 11, 29, -25 + i * 12);
+      ctx.strokeStyle = 'rgba(133,63,29,.58)'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function sparks(t, intensity = 1, rainbow = false, burst = -1) {
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const count = Math.floor(PARTICLE_COUNT * intensity);
+    for (let i = 0; i < count; i++) {
+      const p = particles[i]; let x, y, alpha;
+      if (burst >= 0) {
+        const distance = 75 + p.speed * Math.pow(burst + .18, .7);
+        x = CX + Math.cos(p.a) * distance * 1.05;
+        y = 765 + Math.sin(p.a) * distance * .88 + burst * burst * 50;
+        alpha = clamp(1 - burst * .3) * (.5 + p.r * .5);
+      } else {
+        x = 65 + fract(p.seed + Math.sin(p.a) * t * .013) * 770;
+        y = 1220 - fract(p.r + t * (.045 + p.seed * .06)) * 1020;
+        alpha = (.3 + p.r * .7) * (.65 + Math.sin(t * 3 + i) * .35);
+      }
+      ctx.globalAlpha = alpha;
+      const color = rainbow ? p.color : i % 4 ? '#ffc375' : '#fff3c7';
+      if (i % 7 === 0) star(ctx, x, y, p.size * 2.4, color);
+      else {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, p.size * .5, p.size * 1.5, p.a, 0, TAU); ctx.fill();
+        if (intensity > .5) line(ctx, x, y, x - Math.cos(p.a) * 13, y + 17, color, .7);
+      }
+    }
+    ctx.restore();
+  }
+  function badge(words, y, tint = '#f3ce86') {
+    ctx.save(); polygon(ctx, 307, y - 20, 286, 40, 12); ctx.fillStyle = '#130e20'; ctx.fill();
+    ctx.strokeStyle = tint; ctx.lineWidth = 1; ctx.stroke(); tracked(ctx, words, CX, y, 17, tint, 3); ctx.restore();
+  }
+  function reelSymbol(symbol, x, y, bright) {
+    ctx.save();
+    ctx.beginPath(); ctx.arc(x, y, 72, 0, TAU);
+    ctx.fillStyle = gradient(ctx, x - 60, y - 70, x + 60, y + 70, bright ? ['#821530', '#1e0b20', '#a2462a'] : ['#303854', '#0f1325', '#323451']); ctx.fill();
+    ctx.strokeStyle = bright ? '#ffdaa0' : '#afa580'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x, y, 64, 0, TAU); ctx.strokeStyle = '#76543a'; ctx.lineWidth = 1; ctx.stroke();
+    text(ctx, symbol, x, y, 99, bright ? '#fff1b5' : '#c3c5da'); ctx.restore();
+  }
+  function reels(t, reaching) {
+    const y = 740, rh = 237, rw = 203, gap = 19, start = 127;
+    for (let i = 0; i < 3; i++) {
+      const x = start + i * (rw + gap), stopped = reaching && i !== 1;
+      polygon(ctx, x - 4, y - 4, rw + 8, rh + 8, 20);
+      ctx.fillStyle = stopped ? '#eda765' : '#93856c'; ctx.fill();
+      ctx.save(); polygon(ctx, x, y, rw, rh, 17); ctx.clip();
+      ctx.fillStyle = '#0c101f'; ctx.fillRect(x, y, rw, rh);
+      const offset = stopped ? 0 : (t * (580 + i * 85) + i * 137) % rh;
+      for (let j = -1; j <= 1; j++) {
+        const symbols = ['鳳', '焔', '凰'];
+        const symbol = stopped ? '鳳' : symbols[((Math.floor(t * 3) + i + j) % 3 + 3) % 3];
+        reelSymbol(symbol, x + rw / 2, y + rh / 2 + j * rh + offset, stopped);
+      }
+      if (!stopped) {
+        ctx.globalAlpha = .2;
+        for (let k = 0; k < 7; k++) line(ctx, x + 20 + k * 27, y + 20, x + 20 + k * 27, y + rh - 20, '#afc9ff', 1);
+        ctx.globalAlpha = 1;
+      }
+      ctx.fillStyle = gradient(ctx, 0, y, 0, y + rh, ['#060815', 'transparent', 'transparent', '#060815']);
+      ctx.fillRect(x, y, rw, rh); ctx.restore();
+      diamond(ctx, x + rw / 2, y - 20, 7, stopped ? '#ffc178' : '#9b8051');
+    }
+    line(ctx, 106, y + rh / 2, 124, y + rh / 2, '#ffe1a1', 3);
+    line(ctx, 778, y + rh / 2, 796, y + rh / 2, '#ffe1a1', 3);
+  }
+  function normal(t, reaching) {
+    atmosphere(t, reaching ? .45 : .05);
+    ctx.save(); ctx.globalAlpha = reaching ? .6 : .77;
+    phoenix(CX, 553, .57, t, .6); ctx.restore();
+    badge('神鳥、目覚めの刻', 268);
+    reels(t + 20, reaching); sparks(t, reaching ? .55 : .25);
+    if (reaching) {
+      const local = t - AT.reach, pop = 1 + Math.exp(-local * 10) * .3;
+      glow(ctx, CX, 609, 380, 'rgba(248,13,55,.38)');
+      ctx.save(); ctx.translate(CX, 599); ctx.scale(pop, pop); ctx.rotate(-.045);
+      ctx.shadowColor = '#ff214d'; ctx.shadowBlur = 28;
+      metalText('リーチ', 0, 0, 153); ctx.restore();
+      tracked(ctx, '運命の翼が、動き出す。', CX, 1050, 25, '#ffe2b7', 5);
+    } else {
+      tracked(ctx, '静 寂 の 先 に 、 覚 醒', CX, 1050, 24, '#e2c5a2', 4);
+      tracked(ctx, 'THE FLAME WITHIN', CX, 1100, 15, '#8f9ab4', 5);
+    }
+  }
+  function titleCard(local) {
+    ctx.fillStyle = '#040208'; ctx.fillRect(0, 0, W, H);
+    if (local < .11) return;
+    const p = ease((local - .11) / .2), vanish = clamp((local - .64) / .16);
+    glow(ctx, CX, 690, 490, '#721b26');
+    ctx.save(); ctx.translate(CX, 681); ctx.rotate(-.085);
+    ctx.fillStyle = gradient(ctx, -470, 0, 470, 0, ['transparent', '#a11d35', '#e55439', '#a11d35', 'transparent']);
+    ctx.fillRect(-480, -132, 960, 263);
+    line(ctx, -440, -139, 440, -139, '#ffe7ad', 2); line(ctx, -440, 139, 440, 139, '#ffe7ad', 2);
+    ctx.scale(1 + (1 - p) * .85 + vanish * .12, 1 + (1 - p) * .85);
+    metalText(MACHINE, 0, -4, 137); ctx.restore();
+    tracked(ctx, 'その焔、天をも焦がす。', CX, 458, 27, '#f5d39d', 7);
+    tracked(ctx, 'PHOENIX AWAKENING', CX, 885, 20, '#f6d19a', 8);
+    sparks(local * 2, .45);
+    ctx.fillStyle = `rgba(255,239,206,${Math.max(0, 1 - (local - .11) / .1) * .8})`; ctx.fillRect(0, 0, W, H);
+  }
+  function special(local) {
+    const p = clamp(local / TIME.sp), reveal = ease(local / 1.05), ignition = ease((local - 2.55) / 1.2);
+    atmosphere(local + 9, .55 + p * .45, p > .64);
+    const shake = (2 + ignition * 9) * (.7 + .3 * Math.sin(local * 8));
+    ctx.save(); ctx.translate(Math.sin(local * 61) * shake, Math.cos(local * 79) * shake * .65);
+    glow(ctx, CX, 597, 260 + ignition * 210, `rgba(255,156,48,${.16 + ignition * .25})`);
+    ctx.save(); ctx.translate(CX, 600); ctx.rotate(-local * .28);
+    for (let i = 0; i < 3; i++) {
+      ctx.beginPath(); ctx.ellipse(0, 0, 365 + i * 42, 126 + i * 36, i * .8, 0, Math.PI * 1.55);
+      ctx.strokeStyle = COLORS[(i * 2 + 1) % COLORS.length]; ctx.lineWidth = 2 + ignition * 3; ctx.globalAlpha = .2 + ignition * .3; ctx.stroke();
+    }
+    ctx.restore();
+    phoenix(CX, 770 - reveal * 205 - ignition * 26, .51 + reveal * .4 + ignition * .12, local, 1);
+    sparks(local + 3, .85, p > .6);
+    if (local > 2.8) sparks(local, 1, true, local - 2.8);
+    ctx.restore();
+    badge('SPECIAL REACH', 268, '#ffe4a5');
+    const caption = local < 1.5 ? '眠れる焔が、翼になる。' : '天を裂け。不滅の鳳凰。';
+    tracked(ctx, caption, CX, 960, 26, '#fff1d7', 4);
+    ctx.save(); ctx.translate(CX, 1052); ctx.rotate(-.045);
+    ctx.shadowColor = '#ff663c'; ctx.shadowBlur = 22; metalText('天翔焔舞', 0, 0, 130); ctx.restore();
+    tracked(ctx, 'RISE BEYOND THE FLAMES', CX, 1150, 14, '#ffdc94', 4);
+    const openingFlash = clamp(1 - local / .18) * .8;
+    const finalFlash = clamp((local - 3.79) / .21) * .95;
+    ctx.fillStyle = `rgba(255,242,216,${Math.max(openingFlash, finalFlash)})`; ctx.fillRect(0, 0, W, H);
+  }
+  function result(local) {
+    const settle = ease(local / .65), t = 15 + local;
+    atmosphere(t, 1, true); rays(t, 1.4, true);
+    glow(ctx, CX, 529, 355, 'rgba(255,181,81,.3)');
+    phoenix(CX, 555, .93, t, .5);
+    sparks(t, 1, true, local);
+    badge('祝・鳳凰覚醒', 268, '#ffe5a9');
+    ctx.save(); ctx.translate(CX, 843 + (1 - settle) * 58); ctx.rotate(-.065);
+    const scale = 1 + Math.sin(clamp(local / .65) * Math.PI) * .22;
+    ctx.scale(scale, scale);
+    ctx.shadowColor = '#ff65b9'; ctx.shadowBlur = 36;
+    metalText('大当り', 0, 0, 208, true); ctx.restore();
+    const ribbonY = 1013;
+    ctx.save(); ctx.globalAlpha = settle;
+    polygon(ctx, 174, ribbonY - 35, 552, 70, 25);
+    ctx.fillStyle = gradient(ctx, 0, ribbonY - 35, 0, ribbonY + 35, ['#612441', '#210f2d', '#582338']); ctx.fill();
+    ctx.strokeStyle = '#eccb83'; ctx.lineWidth = 1.5; ctx.stroke();
+    tracked(ctx, '歓喜の翼、いま解き放つ', CX, ribbonY, 29, '#fff0c6', 4);
+    tracked(ctx, 'THE PHOENIX HAS AWAKENED', CX, 1102, 16, '#e8cbb6', 4);
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * TAU;
+      star(ctx, CX + Math.cos(a) * 340, 811 + Math.sin(a) * 250, 7 + i % 3 * 3, COLORS[i % COLORS.length]);
+    }
+    ctx.restore();
+    ctx.fillStyle = `rgba(255,250,230,${clamp(1 - local / .28)})`; ctx.fillRect(0, 0, W, H);
+  }
+  function lights(t, current) {
+    const hot = current === 'reach', won = current === 'result' || current === 'hold' || current === 'complete';
+    const active = hot || won || current === 'sp';
+    if (!active) return;
+    ctx.save();
+    const pulse = hot ? .5 + .5 * Math.pow(Math.sin(t * 9), 2) : .8;
+    const stroke = hot ? '#ff264b' : won ? '#ffe8a4' : '#fda954';
+    polygon(ctx, 63, 205, 774, 998, 38); ctx.strokeStyle = stroke; ctx.lineWidth = hot ? 8 : 4;
+    ctx.shadowColor = stroke; ctx.shadowBlur = 23; ctx.globalAlpha = pulse; ctx.stroke(); ctx.shadowBlur = 0;
+    for (const x of [46, 854]) {
+      for (let j = 0; j < 34; j++) {
+        ctx.globalAlpha = hot ? pulse : .5 + .5 * Math.sin(t * 7 + j * .5) ** 2;
+        diamond(ctx, x, 243 + j * 28, 7, hot ? '#ff3852' : COLORS[(j + Math.floor(t * 5)) % COLORS.length]);
+      }
+    }
+    ctx.restore();
+  }
+
+  // Web Audio is optional: browser autoplay policy never gates the animation.
+  let audio = null, master = null, audioScheduled = false;
+  const AUDIO_LEVEL = .24;
+  function tone(when, frequency, duration, volume = .2, type = 'sine', endFrequency = frequency) {
+    const start = Math.max(audio.currentTime, when), osc = audio.createOscillator(), gain = audio.createGain();
+    osc.type = type; osc.frequency.setValueAtTime(frequency, start);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFrequency), start + duration);
+    gain.gain.setValueAtTime(.0001, start); gain.gain.exponentialRampToValueAtTime(volume, start + .015);
+    gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
+    osc.connect(gain); gain.connect(master); osc.start(start); osc.stop(start + duration + .02);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
+  }
+  function scheduleSound() {
+    if (!audio || audio.state !== 'running' || audioScheduled) return;
+    audioScheduled = true;
+    const elapsed = (performance.now() - epoch) / 1000 - TIME.delay;
+    const base = audio.currentTime - elapsed;
+    function cue(t, freq, duration, volume, type, endFreq) {
+      if (t >= elapsed && t < AT.hold) tone(base + t, freq, duration, volume, type, endFreq);
+    }
+    for (let i = 0; i < 10; i++) cue(i * .12, 480 + i % 3 * 120, .075, .11, 'triangle');
+    [0, .15, .3].forEach((d, i) => cue(AT.reach + d, [440, 554.37, 659.25][i], .7, .28, 'triangle'));
+    cue(AT.card + .11, 150, .65, .6, 'sine', 32);
+    cue(AT.card + .11, 640, .25, .1, 'sawtooth', 80);
+    const notes = [220, 261.63, 329.63, 392, 440, 523.25, 659.25, 783.99];
+    for (let i = 0; i < 24; i++) {
+      cue(AT.sp + i * .15, notes[i % notes.length] * (i > 15 ? 2 : 1), .25, .14, 'triangle');
+      if (i % 4 === 0) cue(AT.sp + i * .15, 95, .28, .38, 'sine', 35);
+    }
+    [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => cue(AT.result + i * .07, f, .8, .24, 'triangle'));
+    cue(AT.result, 160, .6, .55, 'sine', 35);
+    if (elapsed < AT.hold) {
+      master.gain.setValueAtTime(AUDIO_LEVEL, audio.currentTime);
+      master.gain.setValueAtTime(AUDIO_LEVEL, base + AT.hold - .12);
+      master.gain.linearRampToValueAtTime(0, base + AT.hold);
+    }
+  }
+  function initAudio(unlock = false) {
+    if (frozen) return;
+    try {
+      if (!audio) {
+        const AudioEngine = window.AudioContext || window.webkitAudioContext;
+        if (!AudioEngine) return;
+        audio = new AudioEngine(); master = audio.createGain(); master.gain.value = AUDIO_LEVEL;
+        const limiter = audio.createDynamicsCompressor(); master.connect(limiter); limiter.connect(audio.destination);
+      }
+      if (unlock && audio.state === 'suspended') audio.resume().then(scheduleSound).catch(() => {});
+      else scheduleSound();
+    } catch (_) { /* A disabled audio device must not interrupt the visual demo. */ }
+  }
+  // 演出終了後にクリック/タップ/Enterで最初から再生できるよう、経過時間の基準点(epoch)を打ち直す。
+  // 進行中の操作は音声の有効化のみに留め、多重再生は起こさない。
+  function restartIfFinished() {
+    const t = (performance.now() - epoch) / 1000 - TIME.delay;
+    if (t < AT.end) return false;
+    epoch = performance.now(); phase = ''; frozen = false; frameCount = 0; lastRendered = -Infinity;
+    history.length = 0;
+    canvas.dataset.frozen = 'false';
+    requestAnimationFrame(tick);
+    return true;
+  }
+  canvas.addEventListener('pointerdown', () => { if (!restartIfFinished()) initAudio(true); });
+  canvas.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      if (!restartIfFinished()) initAudio(true);
+    }
+  });
+
+  function getPhase(t) {
+    if (t < 0) return 'waiting';
+    if (t < AT.reach) return 'spin';
+    if (t < AT.card) return 'reach';
+    if (t < AT.sp) return 'card';
+    if (t < AT.result) return 'sp';
+    if (t < AT.hold) return 'result';
+    if (t < AT.end) return 'hold';
+    return 'complete';
+  }
+  function render(t, current) {
+    ctx.drawImage(cabinet, 0, 0);
+    ctx.save(); polygon(ctx, VIEW.x, VIEW.y, VIEW.w, VIEW.h, 31); ctx.clip();
+    if (current === 'waiting' || current === 'spin') normal(t, false);
+    else if (current === 'reach') normal(t, true);
+    else if (current === 'card') titleCard(t - AT.card);
+    else if (current === 'sp') special(t - AT.sp);
+    else result(current === 'result' ? t - AT.result : TIME.result);
+    const vignette = ctx.createRadialGradient(CX, 665, 240, CX, 665, 650);
+    vignette.addColorStop(0, 'transparent'); vignette.addColorStop(1, 'rgba(0,0,12,.6)');
+    ctx.fillStyle = vignette; ctx.fillRect(0, 0, W, H); ctx.restore();
+    lights(t, current);
+    const audioOn = audio && audio.state === 'running';
+    tracked(ctx, t >= AT.hold ? '鳳凰、ここに降臨。' : audioOn ? '♪   SOUND ON' : '画面に触れると音が鳴ります', CX, 1353, 13, '#a8967b', 2);
+    frameCount++; canvas.dataset.frames = String(frameCount); canvas.dataset.renderedTime = t.toFixed(3);
+  }
+  function tick(now) {
+    const t = (now - epoch) / 1000 - TIME.delay, current = getPhase(t);
+    if (current !== phase) {
+      phase = current; canvas.dataset.phase = current;
+      history.push({ phase: current, elapsed: Number((t + TIME.delay).toFixed(3)) });
+      canvas.dataset.timeline = JSON.stringify(history);
+      canvas.setAttribute('aria-label', current === 'hold' || current === 'complete'
+        ? `${MACHINE}、大当り。演出終了、結果画面を保持しています。`
+        : `${MACHINE}、${{ waiting: '自動再生待機中', spin: 'リール回転', reach: 'リーチ', card: '発展演出', sp: 'SPリーチ、天翔焔舞', result: '大当り' }[current]}。`);
+      if (current === 'spin') initAudio();
+    }
+    // The final canvas is drawn exactly once. No particles, lights or pixels move afterward.
+    if (t >= AT.hold) {
+      if (!frozen) { render(AT.hold, 'hold'); frozen = true; canvas.dataset.frozen = 'true'; }
+    } else if (now - lastRendered >= 1000 / 60 - 1) {
+      render(t, current); lastRendered = now;
+    }
+    if (t < AT.end) requestAnimationFrame(tick);
+    else if (audio && audio.state !== 'closed') audio.close().catch(() => {});
+  }
+  canvas.dataset.frozen = 'false';
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
