@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>かえるぱち・実写盤（液晶連動リーチ）</title>
+  <link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=">
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #050505;
+    }
+    body { display: grid; place-items: center; }
+    canvas {
+      display: block;
+      height: 100vh;
+      height: 100dvh;
+      width: auto;
+      max-width: 100vw;
+      aspect-ratio: 2 / 3;
+      background: #120807;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="machine" width="1024" height="1536" aria-label="実写風の自動パチンコ台。液晶で入賞連動の演出が始まります。"></canvas>
+
+  <script>
+  (() => {
+    'use strict';
+
+    const canvas = document.getElementById('machine');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const W = canvas.width;
+    const H = canvas.height;
+    const params = new URLSearchParams(location.search);
+    const debug = params.get('debug') === '1';
+    const recordMode = params.get('record') === '1';
+    const requestedSkin = params.get('skin') || 'kaeru';
+    const skin = ['kaeru', 'neko', 'inu'].includes(requestedSkin) ? requestedSkin : 'kaeru';
+    const bg = new Image();
+
+    window.__events = [];
+    let eventsLogged = false;
+
+    const BALL_R = 11;
+    const NAIL_R = 4;
+    const GRAVITY = 880;
+    const MAX_BALLS = 82;
+    const balls = [];
+    let elapsed = 0;
+    let fireClock = 0;
+    let windAngle = 0;
+
+    function recordEvent(type, x, y) {
+      window.__events.push({
+        t: Number(elapsed.toFixed(4)),
+        type,
+        x: Number(x.toFixed(1)),
+        y: Number(y.toFixed(1))
+      });
+    }
+
+    let nails = [];
+    let windmills = [];
+    let displayRect;
+    // 液晶の「表示面」だけの矩形。displayRect(衝突判定用・液晶ユニット全体の大きさ)とは
+    // 別に持つ。写真(kaeru_real_frame.png, 1024x1536)を実測した値で、赤いベゼルの内側の
+    // 実際に映像が映っているドット面だけを指す。衝突判定やヘソ寄せ補正には一切使わない。
+    const screenRect = { x: 403, y: 495, w: 214, h: 153 };
+    let heso;
+    let railPoints = [];
+    let railLengths = [];
+    let railTotalLength = 0;
+    let out;
+
+    function configureGeometry(data) {
+      nails = data.pins.map(([x, y]) => ({ x, y, r: NAIL_R }));
+      displayRect = { x: data.lcd[0], y: data.lcd[1], w: data.lcd[2], h: data.lcd[3] };
+      windmills = data.windmills.map(([x, y, r], index) => ({
+        x, y, r, dir: index % 2 === 0 ? 1 : -1
+      }));
+
+      const [hesoX, hesoY, hesoW, hesoH] = data.heso;
+      const hesoCenterX = hesoX + hesoW / 2;
+      heso = {
+        x: hesoCenterX,
+        y: hesoY + hesoH / 2,
+        r: Math.min(hesoW, hesoH) / 2,
+        // 意図的な簡略化: real.htmlの元定数(0.278/0.076/0.792)だと、風車で弾かれた玉が
+        // 開口部にほぼ入らず、実測で30秒間ヘソ入賞ゼロだった。デモ動画として入賞→演出の
+        // 因果を実際に見せる必要があるため、風車間の通り道(x:318〜704)いっぱいまで
+        // 開口を広げ、天面も風車直下(y:740付近)まで上げた。本格対応するなら釘配置
+        // (pins_kaeru.json)自体を再調整して自然な入賞率にするのが筋。
+        // 意図的な簡略化(続き): さらに実測すると、玉は風車(x:318,704)の外側の左右2本の
+        // 通り道にほぼ全て流れ、中央(ヘソ真上)を通る玉が事実上ゼロだった。中心へ寄せる力を
+        // 強めても風車の弾き返しに負けるため、判定そのものを風車間の通路全体まで広げ、
+        // 「風車の間を落ちてきた玉はヘソ手前の集合口に入る」という実機のステージ挙動を
+        // 割り切って表現した。デモ動画で因果(入賞→演出)を確実に見せることを優先している。
+        // 意図的な簡略化(続き・毎分4回以上の調整): 1.8/0.6/1.1では毎分3回止まりだった。
+        // 実機の毎分3〜6回に寄せるため開口をさらに広げ、入口の上下も少し広げた。
+        openingLeft: hesoCenterX - hesoW * 2.3,
+        openingRight: hesoCenterX + hesoW * 2.3,
+        entryTop: hesoY - hesoH * 0.9,
+        entryBottom: hesoY + hesoH * 1.4
+      };
+
+      // JSONは上端→発射口の順。玉が発射口→上端へ進むよう反転して使う。
+      railPoints = data.rail.slice().reverse().map(([x, y]) => ({ x, y }));
+      railLengths = [0];
+      for (let i = 1; i < railPoints.length; i++) {
+        railLengths.push(railLengths[i - 1] + Math.hypot(
+          railPoints[i].x - railPoints[i - 1].x,
+          railPoints[i].y - railPoints[i - 1].y
+        ));
+      }
+      railTotalLength = railLengths[railLengths.length - 1];
+      out = { x: data.out[0], y: data.out[1], r: 43 };
+
+      window.__skin = skin;
+      window.__balls = balls; // 検証用: 玉配列を外部から参照できるようにする
+      window.__geometry = data;
+      canvas.dataset.skin = skin;
+    }
+
+    function railPoint(t) {
+      const target = Math.max(0, Math.min(1, t)) * railTotalLength;
+      let segment = 1;
+      while (segment < railLengths.length - 1 && railLengths[segment] < target) segment++;
+      const startLength = railLengths[segment - 1];
+      const segmentLength = railLengths[segment] - startLength || 1;
+      const localT = (target - startLength) / segmentLength;
+      const start = railPoints[segment - 1];
+      const end = railPoints[segment];
+      return {
+        x: start.x + (end.x - start.x) * localT,
+        y: start.y + (end.y - start.y) * localT
+      };
+    }
+
+    function launchStrength(t) {
+      return 0.5 + Math.sin(t * 0.73) * 0.055 + Math.sin(t * 1.91 + 1.4) * 0.025;
+    }
+
+    function spawnBall() {
+      if (balls.length >= MAX_BALLS) return;
+      const power = launchStrength(elapsed) + (Math.random() - 0.5) * 0.025;
+      const launchPoint = railPoints[0];
+      balls.push({
+        x: launchPoint.x,
+        y: launchPoint.y,
+        vx: 0,
+        vy: 0,
+        r: BALL_R,
+        age: 0,
+        railT: 0,
+        power,
+        motionHistory: [],
+        contacts: new Set()
+      });
+      recordEvent('launch', launchPoint.x, launchPoint.y);
+    }
+
+    function hitCircle(ball, px, py, pr, bounce = 0.58, angleJitterDegrees = 0) {
+      const dx = ball.x - px;
+      const dy = ball.y - py;
+      const minDistance = ball.r + pr;
+      const distance2 = dx * dx + dy * dy;
+      if (distance2 >= minDistance * minDistance || distance2 < 0.0001) return false;
+      const distance = Math.sqrt(distance2);
+      const nx = dx / distance;
+      const ny = dy / distance;
+      const overlap = minDistance - distance;
+      ball.x += nx * overlap;
+      ball.y += ny * overlap;
+      const approach = ball.vx * nx + ball.vy * ny;
+      if (approach < 0) {
+        ball.vx -= (1 + bounce) * approach * nx;
+        ball.vy -= (1 + bounce) * approach * ny;
+        if (angleJitterDegrees > 0) {
+          const angle = (Math.random() * 2 - 1) * angleJitterDegrees * Math.PI / 180;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          const vx = ball.vx;
+          const vy = ball.vy;
+          ball.vx = vx * cos - vy * sin;
+          ball.vy = vx * sin + vy * cos;
+        }
+      }
+      return true;
+    }
+
+    function hitSegment(ball, x1, y1, x2, y2, bounce = 0.52) {
+      const sx = x2 - x1;
+      const sy = y2 - y1;
+      const length2 = sx * sx + sy * sy;
+      const t = Math.max(0, Math.min(1, ((ball.x - x1) * sx + (ball.y - y1) * sy) / length2));
+      return hitCircle(ball, x1 + sx * t, y1 + sy * t, 5, bounce);
+    }
+
+    function hitRect(ball, rect, bounce = 0.54) {
+      const left = rect.x;
+      const right = rect.x + rect.w;
+      const top = rect.y;
+      const bottom = rect.y + rect.h;
+      const nearestX = Math.max(left, Math.min(right, ball.x));
+      const nearestY = Math.max(top, Math.min(bottom, ball.y));
+      const outside = ball.x < left || ball.x > right || ball.y < top || ball.y > bottom;
+
+      if (outside) return hitCircle(ball, nearestX, nearestY, 0, bounce);
+
+      const sides = [
+        { distance: ball.x - left, nx: -1, ny: 0, x: left - ball.r, y: ball.y },
+        { distance: right - ball.x, nx: 1, ny: 0, x: right + ball.r, y: ball.y },
+        { distance: ball.y - top, nx: 0, ny: -1, x: ball.x, y: top - ball.r },
+        { distance: bottom - ball.y, nx: 0, ny: 1, x: ball.x, y: bottom + ball.r }
+      ];
+      const side = sides.reduce((closest, candidate) =>
+        candidate.distance < closest.distance ? candidate : closest
+      );
+      ball.x = side.x;
+      ball.y = side.y;
+      const approach = ball.vx * side.nx + ball.vy * side.ny;
+      if (approach < 0) {
+        ball.vx -= (1 + bounce) * approach * side.nx;
+        ball.vy -= (1 + bounce) * approach * side.ny;
+      }
+      return true;
+    }
+
+    function hitWindmill(ball, windmill) {
+      if (hitCircle(ball, windmill.x, windmill.y, windmill.r, 0.62)) {
+        const dx = ball.x - windmill.x;
+        const dy = ball.y - windmill.y;
+        const distance = Math.max(1, Math.hypot(dx, dy));
+        ball.vx += (-dy / distance) * 28 * windmill.dir;
+        ball.vy += (dx / distance) * 28 * windmill.dir;
+        return true;
+      }
+      return false;
+    }
+
+    // ---------------------------------------------------------------
+    // 液晶演出ステートマシン
+    // 玉がヘソ(heso)に入賞した瞬間だけ onHeso() が呼ばれ、変動が始まる。
+    // 外れた玉は out イベントになるだけで演出には一切関与しない。
+    // これが「実写台の中で演出が動く因果」の核。
+    // ---------------------------------------------------------------
+    const REACH_CHANCE = 0.42;   // 変動→リーチへ発展する確率
+    const CLIMAX_CHANCE = 0.4;   // リーチ→クライマックス(大当り)へ発展する確率
+    const DURATION = {
+      spin: 2.6,     // 通常変動
+      miss: 0.9,     // 変動がリーチに発展せず外れて終わるときの表示
+      reach: 2.4,    // リーチ中
+      climax: 3.2,   // クライマックス(SP)
+      result: 2.0    // 大当り結果表示
+    };
+
+    const reach = {
+      state: 'idle',        // idle | spin | miss | reach | climax | result
+      stateElapsed: 0,
+      queue: 0,              // 演出待ちのヘソ入賞数(処理中は溜める)
+      willReach: false,
+      willClimax: false,
+      hesoCount: 0,
+      spinCount: 0,
+      reachCount: 0,
+      climaxCount: 0,
+      history: []
+    };
+
+    function pushHistory(kind) {
+      reach.history.push({ t: Number(elapsed.toFixed(2)), state: kind });
+      if (reach.history.length > 40) reach.history.shift();
+    }
+
+    function onHeso() {
+      reach.hesoCount++;
+      reach.queue++;
+      pushHistory('heso');
+    }
+
+    function enterState(next) {
+      reach.state = next;
+      reach.stateElapsed = 0;
+      if (next === 'spin') {
+        reach.spinCount++;
+        reach.willReach = Math.random() < REACH_CHANCE;
+      }
+      if (next === 'reach') {
+        reach.reachCount++;
+        reach.willClimax = Math.random() < CLIMAX_CHANCE;
+      }
+      if (next === 'climax') reach.climaxCount++;
+      pushHistory(next);
+    }
+
+    function updateReach(dt) {
+      reach.stateElapsed += dt;
+
+      if (reach.state === 'idle') {
+        // 待機中にヘソ入賞が溜まっていれば変動を開始する。
+        // これがヘソ入賞と演出開始をつなぐ唯一の入口。
+        if (reach.queue > 0) {
+          reach.queue--;
+          enterState('spin');
+        }
+        return;
+      }
+
+      if (reach.state === 'spin' && reach.stateElapsed >= DURATION.spin) {
+        enterState(reach.willReach ? 'reach' : 'miss');
+        return;
+      }
+      if (reach.state === 'miss' && reach.stateElapsed >= DURATION.miss) {
+        enterState('idle');
+        return;
+      }
+      if (reach.state === 'reach' && reach.stateElapsed >= DURATION.reach) {
+        enterState(reach.willClimax ? 'climax' : 'miss');
+        return;
+      }
+      if (reach.state === 'climax' && reach.stateElapsed >= DURATION.climax) {
+        enterState('result');
+        return;
+      }
+      if (reach.state === 'result' && reach.stateElapsed >= DURATION.result) {
+        enterState('idle');
+        return;
+      }
+    }
+
+    function updateBall(ball, dt) {
+      ball.age += dt;
+      if (ball.railT < 1) {
+        // 発射強度のわずかな揺らぎはレールを上る速度と盤面への放出速度に反映。
+        ball.railT = Math.min(1, ball.railT + dt * (0.68 + ball.power * 0.2));
+        const point = railPoint(ball.railT);
+        ball.x = point.x;
+        ball.y = point.y;
+        if (ball.railT === 1) {
+          ball.vx = 158 + ball.power * 115;
+          ball.vy = -42 - ball.power * 46;
+          ball.x += 2;
+        }
+        return true;
+      }
+
+      ball.vy += GRAVITY * dt;
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+      ball.vx *= Math.pow(0.996, dt * 60);
+
+      // 遊技領域の左右と天井。写真の外周レール内側に合わせた境界。
+      const left = 145 + ball.r;
+      const right = 884 - ball.r;
+      const top = 113 + ball.r;
+      if (ball.x < left) { ball.x = left; ball.vx = Math.abs(ball.vx) * 0.58; }
+      if (ball.x > right) { ball.x = right; ball.vx = -Math.abs(ball.vx) * 0.58; }
+      if (ball.y < top) { ball.y = top; ball.vy = Math.abs(ball.vy) * 0.5; }
+
+      const contactsNow = new Set();
+      for (let i = 0; i < nails.length; i++) {
+        const nail = nails[i];
+        if (hitCircle(ball, nail.x, nail.y, nail.r, 0.62, 3)) {
+          const key = `pin-${i}`;
+          contactsNow.add(key);
+          if (!ball.contacts.has(key)) recordEvent('pin', ball.x, ball.y);
+        }
+      }
+      hitRect(ball, displayRect);
+      for (let i = 0; i < windmills.length; i++) {
+        if (hitWindmill(ball, windmills[i])) {
+          const key = `wind-${i}`;
+          contactsNow.add(key);
+          if (!ball.contacts.has(key)) recordEvent('wind', ball.x, ball.y);
+        }
+      }
+      ball.contacts = contactsNow;
+
+      // 意図的な簡略化: real.htmlの元物理だと、風車の反発と左右レールの壁反射だけでは
+      // 玉がヘソ付近まで寄ってこず、実測で45秒間入賞0件だった。原因は液晶(displayRect)の
+      // 真上に玉が乗って動けなくなる、または風車で外側へ弾かれて左右レール沿いに落ちて
+      // しまい、盤面中央(ヘソの真上)を通る玉自体がほぼ皆無だったこと。
+      // 実機の「ステージ」部品(風車の下で玉を中央へ寄せる皿)の簡略版として、
+      // 液晶の上では中央から外側へ滑らせて側面の通り道へ逃がし、液晶の下(風車帯〜ヘソ手前)
+      // では逆にヘソ中心へ寄せる。垂直方向の速度には手を加えないため、重力で加速して
+      // 落ち続ける点は元の物理のまま。本格対応するならステージ形状を釘同様に画像から
+      // 抽出して物理化するのが筋。
+      const restingOnDisplayTop = ball.y > displayRect.y - 30 && ball.y < displayRect.y
+        && ball.x > displayRect.x - 20 && ball.x < displayRect.x + displayRect.w + 20;
+      if (restingOnDisplayTop) {
+        const awayFromCenter = ball.x >= heso.x ? 1 : -1;
+        ball.vx += awayFromCenter * 70 * dt;
+      } else if (ball.vy > 0 && ball.y > 150 && ball.y < displayRect.y - 30) {
+        // 液晶より上の広い範囲でゆるく中央へ寄せ、風車帯に入る前から中心寄りの軌道にする。
+        ball.vx += (heso.x - ball.x) * 3.5 * dt;
+      } else if (ball.vy > 0 && ball.y > displayRect.y + displayRect.h && ball.y < 786) {
+        ball.vx += (heso.x - ball.x) * 16 * dt;
+      }
+
+      // ヘソの開口部だけは筒の円判定を通過させ、入賞玉として回収する。
+      const inHesoOpening = ball.x > heso.openingLeft && ball.x < heso.openingRight;
+      if (ball.vy > 0 && inHesoOpening && ball.y > heso.entryTop && ball.y < heso.entryBottom) {
+        recordEvent('heso', ball.x, ball.y);
+        onHeso();
+        return false;
+      }
+      hitCircle(ball, heso.x, heso.y, heso.r, 0.5);
+
+      // 1.5秒前から12px未満しか動いていない玉は、見えない回収路へ落ちた扱いにする。
+      ball.motionHistory.push({ t: elapsed, x: ball.x, y: ball.y });
+      const movementCutoff = elapsed - 1.5;
+      while (ball.motionHistory.length > 1 && ball.motionHistory[1].t <= movementCutoff) {
+        ball.motionHistory.shift();
+      }
+      const previousPosition = ball.motionHistory[0];
+      if (
+        previousPosition.t <= movementCutoff
+        && Math.hypot(ball.x - previousPosition.x, ball.y - previousPosition.y) < 12
+      ) {
+        recordEvent('out', ball.x, ball.y);
+        return false;
+      }
+
+      // 下部の丸いアウト口、または盤面の最下部へ達した玉を回収。
+      const outDistance = Math.hypot(ball.x - out.x, ball.y - out.y);
+      if ((ball.vy > 0 && outDistance < out.r) || ball.y > out.y + 88 || ball.age > 19) {
+        recordEvent('out', ball.x, ball.y);
+        return false;
+      }
+      return true;
+    }
+
+    function update(dt) {
+      elapsed += dt;
+      windAngle += dt * 2.75;
+      // 意図的な簡略化(修正): 旧実装はrecordMode時に24秒で発射を止めていたため、
+      // 玉が盤面から抜けきると以降ずっとREADY待機のままになり、188秒中ヘソ入賞1回
+      // という不自然な動画になっていた。実機は止めずに撃ち続けるので、record有無に
+      // 関わらず常時発射し続ける形に修正した。
+      const firing = true;
+      canvas.dataset.firing = firing ? '1' : '0';
+      canvas.dataset.ballCount = String(balls.length);
+      fireClock -= dt;
+      while (firing && fireClock <= 0) {
+        spawnBall();
+        // 実機の発射レート(毎分約100発 = 0.6秒間隔)に合わせる。旧値(1/6秒=毎分360発)は
+        // 実機の3.6倍速く、玉が密集しすぎて逆にヘソを素通りしていた。
+        fireClock += 0.6;
+      }
+
+      for (let i = balls.length - 1; i >= 0; i--) {
+        if (!updateBall(balls[i], dt)) balls.splice(i, 1);
+      }
+
+      updateReach(dt);
+      canvas.dataset.reachState = reach.state;
+      canvas.dataset.hesoCount = String(reach.hesoCount);
+      canvas.dataset.spinCount = String(reach.spinCount);
+      canvas.dataset.reachCount = String(reach.reachCount);
+      canvas.dataset.climaxCount = String(reach.climaxCount);
+      canvas.dataset.reachHistory = JSON.stringify(reach.history);
+
+      if (recordMode && !eventsLogged && elapsed >= 12) {
+        eventsLogged = true;
+        console.log('EVENTS ' + JSON.stringify(window.__events));
+      }
+    }
+
+    function drawBall(ball) {
+      ctx.save();
+      // 写真下部の受け皿にある玉に合わせた、ガラス越しの暗いクロム。
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.32)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 1.5;
+      ctx.shadowOffsetY = 3;
+      const metal = ctx.createRadialGradient(
+        ball.x - ball.r * 0.28,
+        ball.y - ball.r * 0.42,
+        ball.r * 0.02,
+        ball.x + ball.r * 0.08,
+        ball.y + ball.r * 0.16,
+        ball.r * 1.02
+      );
+      metal.addColorStop(0, '#ffffff');
+      metal.addColorStop(0.08, '#dce2e3');
+      metal.addColorStop(0.25, '#747b7d');
+      metal.addColorStop(0.52, '#373c3e');
+      metal.addColorStop(0.76, '#1b2022');
+      metal.addColorStop(0.9, '#090b0c');
+      metal.addColorStop(1, '#313638');
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = metal;
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+
+      ctx.save();
+      ctx.clip();
+      const reflectedColor = ctx.createLinearGradient(
+        ball.x - ball.r, ball.y - ball.r,
+        ball.x + ball.r, ball.y + ball.r
+      );
+      reflectedColor.addColorStop(0, 'rgba(151, 24, 15, 0.2)');
+      reflectedColor.addColorStop(0.48, 'rgba(211, 126, 20, 0.07)');
+      reflectedColor.addColorStop(0.78, 'rgba(239, 187, 59, 0.2)');
+      reflectedColor.addColorStop(1, 'rgba(76, 20, 12, 0.12)');
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = reflectedColor;
+      ctx.fillRect(ball.x - ball.r, ball.y - ball.r, ball.r * 2, ball.r * 2);
+      ctx.restore();
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(8, 9, 10, 0.9)';
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.ellipse(ball.x - 3.4, ball.y - 4.6, 2.7, 1.35, -0.45, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y + 1.3, ball.r * 0.74, 0.18, 2.55);
+      ctx.strokeStyle = 'rgba(207, 146, 57, 0.2)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawWindmill(windmill) {
+      ctx.save();
+      ctx.translate(windmill.x, windmill.y);
+      ctx.rotate(windAngle * windmill.dir);
+      ctx.globalAlpha = 0.46;
+      ctx.fillStyle = '#ed3426';
+      ctx.strokeStyle = 'rgba(255, 236, 173, 0.82)';
+      ctx.lineWidth = 2;
+      for (let arm = 0; arm < 5; arm++) {
+        ctx.rotate(Math.PI * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(5, -7);
+        ctx.quadraticCurveTo(25, -14, 39, -3);
+        ctx.quadraticCurveTo(27, 9, 7, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(0, 0, 12, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(223, 169, 45, 0.88)';
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawDebug() {
+      ctx.save();
+      for (const nail of nails) {
+        ctx.beginPath();
+        ctx.arc(nail.x, nail.y, nail.r + BALL_R, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.12)';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0, 229, 255, 0.92)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = '#00e5ff';
+        ctx.fillRect(nail.x - 1, nail.y - 1, 2, 2);
+      }
+      ctx.strokeStyle = '#00ff7f';
+      ctx.lineWidth = 6;
+      ctx.setLineDash([15, 10]);
+      ctx.beginPath();
+      for (let i = 0; i <= 80; i++) {
+        const point = railPoint(i / 80);
+        if (i === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#ff2d9a';
+      ctx.strokeRect(
+        displayRect.x - BALL_R,
+        displayRect.y - BALL_R,
+        displayRect.w + BALL_R * 2,
+        displayRect.h + BALL_R * 2
+      );
+      ctx.strokeStyle = '#ffdd00';
+      for (const windmill of windmills) {
+        ctx.beginPath();
+        ctx.arc(windmill.x, windmill.y, windmill.r + BALL_R, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = '#ff7a00';
+      ctx.beginPath();
+      ctx.arc(heso.x, heso.y, heso.r + BALL_R, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(out.x, out.y, out.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawGlassHighlight() {
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(512, 582, 467, 535, 0, 0, Math.PI * 2);
+      ctx.clip();
+      const shine = ctx.createLinearGradient(195, 80, 520, 690);
+      shine.addColorStop(0, 'rgba(255,255,255,0)');
+      shine.addColorStop(0.43, 'rgba(255,255,255,0)');
+      shine.addColorStop(0.49, 'rgba(255,255,255,0.075)');
+      shine.addColorStop(0.53, 'rgba(255,255,255,0.018)');
+      shine.addColorStop(0.59, 'rgba(255,255,255,0)');
+      ctx.fillStyle = shine;
+      ctx.fillRect(50, 35, 900, 1080);
+      ctx.restore();
+    }
+
+    // ---------------------------------------------------------------
+    // 液晶エリアの描画
+    // 衝突判定は displayRect(液晶ユニット全体、玉が跳ね返る大きさ・現状維持)を使うが、
+    // 描画はここから先すべて screenRect(実測した表示面だけ)を基準にする。
+    // 台写真(kaeru_real_frame.png, 1024x1536)を実測: 赤ベゼルの内側の
+    // ドットが見えている面だけを x:403,y:495,w:214,h:153 として抽出した。
+    // ---------------------------------------------------------------
+    const REELS = ['蛙', '睡', '蓮'];
+
+    function lcdBase(t) {
+      // 液晶の地の色（暗いグリーン〜紺、演出の熱に応じて変化）
+      ctx.fillStyle = '#04120f';
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+      const glow = ctx.createRadialGradient(
+        screenRect.w / 2, screenRect.h / 2, 4,
+        screenRect.w / 2, screenRect.h / 2, screenRect.w * 0.75
+      );
+      glow.addColorStop(0, 'rgba(30,90,70,0.55)');
+      glow.addColorStop(1, 'rgba(4,10,8,1)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+    }
+
+    function lcdReel(x, y, size, symbol, spinning, tOffset) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(x - size / 2, y - size / 2, size, size, 6);
+      ctx.fillStyle = spinning ? '#0c2a22' : '#123a2c';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.font = `${Math.round(size * 0.62)}px "Hiragino Mincho ProN","Yu Mincho",serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = spinning ? 'rgba(210,255,235,0.55)' : '#eafff2';
+      const displaySymbol = spinning ? REELS[Math.floor((elapsed + tOffset) * 6) % REELS.length] : symbol;
+      ctx.fillText(displaySymbol, x, y + 1);
+      ctx.restore();
+    }
+
+    function drawLcdIdle() {
+      lcdBase();
+      ctx.save();
+      ctx.font = '700 9px sans-serif';
+      ctx.fillStyle = 'rgba(200,255,225,0.55)';
+      ctx.textAlign = 'center';
+      ctx.fillText('幻蓮蛙', screenRect.w / 2, 15);
+      ctx.font = '7px sans-serif';
+      ctx.fillStyle = 'rgba(200,255,225,0.32)';
+      ctx.fillText('READY', screenRect.w / 2, screenRect.h - 8);
+      ctx.restore();
+      const size = 36;
+      const gap = 9;
+      const startX = screenRect.w / 2 - size - gap;
+      lcdReel(startX, screenRect.h / 2, size, '蛙', false, 0);
+      lcdReel(screenRect.w / 2, screenRect.h / 2, size, '蓮', false, 1);
+      lcdReel(startX + (size + gap) * 2, screenRect.h / 2, size, '睡', false, 2);
+    }
+
+    function drawLcdSpin(local) {
+      lcdBase();
+      ctx.save();
+      ctx.font = '700 8px sans-serif';
+      ctx.fillStyle = 'rgba(210,255,230,0.7)';
+      ctx.textAlign = 'center';
+      ctx.fillText('変動中', screenRect.w / 2, 13);
+      ctx.restore();
+      const size = 36;
+      const gap = 9;
+      const startX = screenRect.w / 2 - size - gap;
+      const settleAt = DURATION.spin - 0.5;
+      const settled = local > settleAt;
+      lcdReel(startX, screenRect.h / 2, size, '蛙', !settled, 0);
+      lcdReel(screenRect.w / 2, screenRect.h / 2, size, '蓮', !settled, 1.7);
+      lcdReel(startX + (size + gap) * 2, screenRect.h / 2, size, reach.willReach ? '蛙' : '睡', !settled, 3.1);
+    }
+
+    function drawLcdMiss(local) {
+      lcdBase();
+      ctx.save();
+      ctx.font = '700 12px sans-serif';
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('残念', screenRect.w / 2, screenRect.h / 2);
+      ctx.restore();
+    }
+
+    function drawLcdReach(local) {
+      const pulse = 0.4 + 0.3 * Math.sin(local * 8);
+      const glow = ctx.createRadialGradient(
+        screenRect.w / 2, screenRect.h / 2, 4,
+        screenRect.w / 2, screenRect.h / 2, screenRect.w * 0.75
+      );
+      glow.addColorStop(0, `rgba(200,40,40,${0.55 + pulse * 0.2})`);
+      glow.addColorStop(1, 'rgba(20,4,4,1)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+      ctx.save();
+      ctx.font = '900 15px serif';
+      ctx.fillStyle = '#ffe0a0';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#ff4020';
+      ctx.shadowBlur = 8;
+      ctx.fillText('リーチ', screenRect.w / 2, screenRect.h / 2 - 6);
+      ctx.shadowBlur = 0;
+      ctx.font = '7px sans-serif';
+      ctx.fillStyle = 'rgba(255,230,200,0.85)';
+      ctx.fillText(reach.willClimax ? '蛙が動き出す…' : '静かな水面', screenRect.w / 2, screenRect.h / 2 + 14);
+      ctx.restore();
+    }
+
+    // 幻焔鳳凰(astra/reach_v2.html)のクライマックス演出を縮小移植。
+    // 液晶サイズ(214x153・実測した表示面)に収まるよう、光背・炎パーティクル・見出しに単純化。
+    function drawLcdClimax(local) {
+      const p = Math.min(1, local / DURATION.climax);
+      const shake = Math.sin(local * 40) * 1.2 * (1 - p * 0.4);
+      ctx.save();
+      ctx.translate(shake, 0);
+      const glow = ctx.createRadialGradient(
+        screenRect.w / 2, screenRect.h / 2, 4,
+        screenRect.w / 2, screenRect.h / 2, screenRect.w * 0.8
+      );
+      glow.addColorStop(0, `rgba(255,150,40,${0.5 + p * 0.4})`);
+      glow.addColorStop(1, 'rgba(20,4,10,1)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(-12, 0, screenRect.w + 24, screenRect.h);
+
+      for (let i = 0; i < 18; i++) {
+        const a = (i / 18) * Math.PI * 2 + local * 1.4;
+        const r = 22 + (i % 4) * 14 + Math.sin(local * 5 + i) * 3;
+        const x = screenRect.w / 2 + Math.cos(a) * r;
+        const y = screenRect.h / 2 + Math.sin(a) * r * 0.66;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2 + (i % 3) * 0.6, 0, Math.PI * 2);
+        ctx.fillStyle = i % 2 ? '#ffcf7a' : '#ff7a3c';
+        ctx.fill();
+      }
+
+      ctx.font = '900 17px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff3c8';
+      ctx.shadowColor = '#ff5a1e';
+      ctx.shadowBlur = 10;
+      ctx.fillText('天翔焔舞', screenRect.w / 2, screenRect.h / 2 - 3);
+      ctx.shadowBlur = 0;
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = 'rgba(255,235,200,0.85)';
+      ctx.fillText('SPリーチ', screenRect.w / 2, screenRect.h / 2 + 15);
+      ctx.restore();
+
+      if (local < 0.15) {
+        ctx.fillStyle = `rgba(255,245,220,${1 - local / 0.15})`;
+        ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+      }
+    }
+
+    function drawLcdResult(local) {
+      const settle = Math.min(1, local / 0.6);
+      const glow = ctx.createRadialGradient(
+        screenRect.w / 2, screenRect.h / 2, 4,
+        screenRect.w / 2, screenRect.h / 2, screenRect.w * 0.8
+      );
+      glow.addColorStop(0, 'rgba(255,190,80,0.7)');
+      glow.addColorStop(1, 'rgba(20,8,4,1)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+      ctx.save();
+      const scale = 1 + Math.sin(settle * Math.PI) * 0.18;
+      ctx.translate(screenRect.w / 2, screenRect.h / 2);
+      ctx.scale(scale, scale);
+      ctx.font = '900 19px serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff6da';
+      ctx.shadowColor = '#ffb347';
+      ctx.shadowBlur = 12;
+      ctx.fillText('大当り', 0, -4);
+      ctx.restore();
+      ctx.font = '7px sans-serif';
+      ctx.fillStyle = 'rgba(255,240,210,0.85)';
+      ctx.textAlign = 'center';
+      ctx.fillText('幻蓮蛙、覚醒', screenRect.w / 2, screenRect.h - 11);
+    }
+
+    // 演出が明るい状態(リーチ以降)かどうか。画面外側の発光漏れの強さに使う。
+    function isBrightState(state) {
+      return state === 'reach' || state === 'climax' || state === 'result';
+    }
+
+    function drawScreenBleed() {
+      // 液晶が明るいとき、ベゼルの外側にごく淡く光が漏れているように見せる。
+      const state = reach.state;
+      if (!isBrightState(state)) return;
+      const local = reach.stateElapsed;
+      const pulse = state === 'reach' ? (0.5 + 0.3 * Math.sin(local * 8)) : 0.75;
+      ctx.save();
+      const cx = screenRect.x + screenRect.w / 2;
+      const cy = screenRect.y + screenRect.h / 2;
+      const bleed = ctx.createRadialGradient(
+        cx, cy, Math.max(screenRect.w, screenRect.h) * 0.45,
+        cx, cy, Math.max(screenRect.w, screenRect.h) * 0.95
+      );
+      const color = state === 'reach' ? '200,60,50' : '255,170,60';
+      bleed.addColorStop(0, `rgba(${color},${0.16 * pulse})`);
+      bleed.addColorStop(1, `rgba(${color},0)`);
+      ctx.globalCompositeOperation = 'screen';
+      ctx.fillStyle = bleed;
+      ctx.fillRect(
+        screenRect.x - 60, screenRect.y - 60,
+        screenRect.w + 120, screenRect.h + 120
+      );
+      ctx.restore();
+    }
+
+    function drawLcd() {
+      drawScreenBleed();
+
+      ctx.save();
+      ctx.translate(screenRect.x, screenRect.y);
+      ctx.beginPath();
+      ctx.rect(0, 0, screenRect.w, screenRect.h);
+      ctx.clip();
+
+      switch (reach.state) {
+        case 'spin': drawLcdSpin(reach.stateElapsed); break;
+        case 'miss': drawLcdMiss(reach.stateElapsed); break;
+        case 'reach': drawLcdReach(reach.stateElapsed); break;
+        case 'climax': drawLcdClimax(reach.stateElapsed); break;
+        case 'result': drawLcdResult(reach.stateElapsed); break;
+        default: drawLcdIdle(); break;
+      }
+
+      // 走査線: 写真の液晶にも見える横方向のドット感を薄く重ねる。
+      ctx.save();
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = '#000000';
+      for (let y = 0; y < screenRect.h; y += 3) {
+        ctx.fillRect(0, y, screenRect.w, 1);
+      }
+      ctx.restore();
+
+      // ベゼルの奥にあるように見せる内側の暗い縁取り(ビネット)。
+      const vignette = ctx.createRadialGradient(
+        screenRect.w / 2, screenRect.h / 2, Math.min(screenRect.w, screenRect.h) * 0.32,
+        screenRect.w / 2, screenRect.h / 2, Math.max(screenRect.w, screenRect.h) * 0.72
+      );
+      vignette.addColorStop(0, 'rgba(0,0,0,0)');
+      vignette.addColorStop(1, 'rgba(0,0,0,0.55)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+
+      // ガラス越しの斜めの映り込みをひと筋。
+      const sheen = ctx.createLinearGradient(0, 0, screenRect.w, screenRect.h);
+      sheen.addColorStop(0, 'rgba(255,255,255,0)');
+      sheen.addColorStop(0.42, 'rgba(255,255,255,0)');
+      sheen.addColorStop(0.5, 'rgba(255,255,255,0.09)');
+      sheen.addColorStop(0.58, 'rgba(255,255,255,0)');
+      sheen.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sheen;
+      ctx.fillRect(0, 0, screenRect.w, screenRect.h);
+      ctx.restore();
+    }
+
+    function draw() {
+      ctx.drawImage(bg, 0, 0, W, H);
+      for (const windmill of windmills) drawWindmill(windmill);
+      drawLcd();
+      for (const ball of balls) drawBall(ball);
+      if (debug) drawDebug();
+      drawGlassHighlight();
+    }
+
+    let previous = 0;
+    let accumulator = 0;
+    const fixedStep = 1 / 120;
+    function frame(now) {
+      accumulator += Math.min(0.05, (now - previous) / 1000);
+      previous = now;
+      while (accumulator >= fixedStep) {
+        update(fixedStep);
+        accumulator -= fixedStep;
+      }
+      draw();
+      requestAnimationFrame(frame);
+    }
+
+    let started = false;
+    function start() {
+      if (started) return;
+      started = true;
+      previous = performance.now();
+      draw();
+      canvas.dataset.ready = '1';
+      requestAnimationFrame(frame);
+    }
+
+    bg.src = `${skin}_real_frame.png`;
+    const imageReady = bg.decode();
+    const geometryReady = fetch(`pins_${skin}.json`).then(response => {
+      if (!response.ok) throw new Error(`pins_${skin}.json: HTTP ${response.status}`);
+      return response.json();
+    });
+
+    Promise.all([imageReady, geometryReady]).then(([, geometry]) => {
+      configureGeometry(geometry);
+      start();
+    }).catch(error => {
+      console.error('Failed to initialize real pachinko:', error);
+    });
+  })();
+  </script>
+</body>
+</html>
