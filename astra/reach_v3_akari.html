@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#081d1a">
+<link rel="icon" href="data:,">
+<title>燈ノ神楽 — 月夜を越えて、奇跡を灯せ。</title>
+<style>
+  *{box-sizing:border-box}
+  :root{color-scheme:dark;--paper:#f4eddb;--gold:#dfbd77;--muted:#91a69b;--line:#c6aa642b;--serif:"Hiragino Mincho ProN","Yu Mincho",YuMincho,serif;--sans:"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif}
+  body{margin:0;background:#081b18;color:var(--paper);font-family:var(--sans);min-width:280px;min-height:100svh;background-image:radial-gradient(ellipse at 50% 15%,#16382c 0,transparent 65%)}
+  body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.12;background-image:repeating-radial-gradient(circle at 50% 100%,transparent 0 28px,#839279 29px 30px,transparent 31px 57px);background-size:116px 58px;mask-image:linear-gradient(#000,transparent 65%)}
+  button,input{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,.theater:focus-visible{outline:2px solid #f3d292;outline-offset:5px}button:disabled{opacity:.35;cursor:default}button{touch-action:manipulation}
+  .shell{width:min(1180px,calc(100% - 64px));margin:auto;position:relative}
+  header{height:84px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:16px}
+  .brand{display:flex;align-items:center;gap:13px}.crest{display:grid;place-items:center;width:40px;height:40px;position:relative;border:1px solid #d8b77180;border-radius:50%;font:23px var(--serif);color:var(--gold)}.crest:before{content:"";position:absolute;inset:4px;border:1px solid #d8b77140;transform:rotate(45deg)}
+  .brand-name{font:600 20px var(--serif);letter-spacing:.16em}.brand-name small{display:block;font:8px var(--sans);letter-spacing:.26em;color:var(--gold);margin-top:6px}.edition{font-size:10px;letter-spacing:.18em;color:#a8b9a8;display:flex;align-items:center;gap:12px}.edition:before{content:"";width:27px;height:1px;background:var(--gold)}
+  .intro{display:flex;align-items:flex-end;justify-content:space-between;gap:28px;padding:30px 0 25px}.eyebrow{font-size:9px;letter-spacing:.24em;color:var(--gold);margin:0 0 11px}.intro h1{font:500 clamp(24px,3vw,36px)/1.4 var(--serif);letter-spacing:.1em;margin:0}.intro-copy{font-size:11px;line-height:1.9;color:#a5b8a9;margin:0 0 3px;text-align:right;letter-spacing:.05em}
+  .theater{position:relative;isolation:isolate;width:100%;aspect-ratio:16/8.6;overflow:hidden;background:#071a18;border:1px solid #bba36b66;border-radius:3px;box-shadow:0 24px 70px #0006,0 0 50px #e9c27407;cursor:pointer;container-type:inline-size;--accent:#e8c884;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+  .theater:before{content:"";position:absolute;z-index:9;inset:9px;border:1px solid #d9bd6e38;pointer-events:none;clip-path:polygon(0 0,25% 0,25% 1px,1px 1px,1px 22%,0 22%,0 0,100% 0,100% 22%,calc(100% - 1px) 22%,calc(100% - 1px) 1px,75% 1px,75% 0,100% 0,100% 100%,75% 100%,75% calc(100% - 1px),calc(100% - 1px) calc(100% - 1px),calc(100% - 1px) 78%,100% 78%,100% 100%,0 100%,0 78%,1px 78%,1px calc(100% - 1px),25% calc(100% - 1px),25% 100%,0 100%)}
+  canvas{display:block;position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .vignette{position:absolute;inset:0;background:linear-gradient(0deg,#041511 0%,transparent 38%,transparent 74%,#04151188),linear-gradient(90deg,#021713ad,transparent 52%);pointer-events:none}
+  .screen-hud{position:absolute;z-index:5;top:28px;left:30px;right:30px;display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:9px;letter-spacing:.2em;color:#dfd4b3}.screen-hud .chapter{display:flex;align-items:center;gap:9px}.chapter:before{content:"";width:5px;height:5px;background:var(--accent);transform:rotate(45deg);box-shadow:0 0 13px var(--accent)}.live{display:flex;align-items:center;gap:7px;color:#b2c8b4;font-size:9px;letter-spacing:.08em}.live:before{content:"";width:5px;height:5px;border-radius:50%;background:#9cbfaf}.theater[data-running="true"] .live:before{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+  .title-lockup{position:absolute;top:25%;left:7.3%;z-index:3;transition:opacity .65s,transform .8s;pointer-events:none}.title-lockup .pretitle{font:11px var(--serif);letter-spacing:.45em;color:#d3c297;display:flex;align-items:center;gap:12px}.pretitle:before{content:"";height:1px;width:34px;background:#c3a866}.machine-logo{font:800 clamp(38px,6.6vw,83px)/1.4 var(--serif);letter-spacing:.02em;margin:8px 0 1px;position:relative;background:linear-gradient(170deg,#fff5d3 5%,#d7aa4f 48%,#fff0b5 64%,#b77c33);background-clip:text;-webkit-background-clip:text;color:transparent;filter:drop-shadow(0 3px 1px #000) drop-shadow(0 0 20px #a28d4736)}.machine-logo em{font-size:.7em;font-style:normal;display:inline-block;transform:translateY(-.05em);margin:0 .01em}.logo-en{font-size:9px;letter-spacing:.45em;color:#c9b780}.title-sub{font:12px var(--serif);letter-spacing:.26em;color:#d8decc;margin:26px 0 0}.title-seal{position:absolute;right:-22px;top:20px;border:1px solid #ca674c;color:#e8a280;font:11px/1.2 var(--serif);padding:6px 3px;writing-mode:vertical-rl;transform:rotate(7deg)}
+  .side-poem{position:absolute;right:31px;top:24%;writing-mode:vertical-rl;font:12px var(--serif);letter-spacing:.38em;color:#c4bd9a;transition:opacity .5s;z-index:3;pointer-events:none}.side-poem:after{content:"";display:inline-block;height:45px;width:1px;background:#c2a06566;margin-top:20px}
+  .reels{position:absolute;bottom:22%;left:10%;display:flex;gap:12px;z-index:3;transition:opacity .5s,transform .7s;pointer-events:none}.reel{position:relative;display:grid;place-items:center;width:61px;height:75px;clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);background:linear-gradient(145deg,#d4b469,#766339);padding:1px}.reel:before{content:"";position:absolute;inset:1px;clip-path:inherit;background:linear-gradient(140deg,#264134,#0b221e 60%,#233b29)}.reel span{position:relative;font:700 39px var(--serif);color:#ead494;text-shadow:0 0 18px #ffcd7355}.reel.middle{opacity:.7}.reel.spinning span{animation:reel-flick .23s linear infinite}.reel.warm{box-shadow:0 0 20px #ecc780}.reels-label{position:absolute;top:calc(100% + 12px);width:100%;text-align:center;letter-spacing:.2em;font-size:8px;color:#c1b186}
+  .screen-copy{position:absolute;z-index:6;left:7%;right:7%;bottom:7%;pointer-events:none;display:flex;flex-direction:column;align-items:center;text-align:center}.dialogue{font:600 clamp(17px,2.65vw,32px)/1.45 var(--serif);letter-spacing:.12em;color:#f1e8c9;text-shadow:0 2px 8px #000,0 0 25px #000}.dialogue-note{font-size:9px;letter-spacing:.22em;color:#b0c3ae;margin-top:9px}.screen-copy.pop .dialogue{animation:copy-in .6s cubic-bezier(.2,.7,.1,1)}
+  .cutin{position:absolute;z-index:4;inset:20% -5% 25%;background:linear-gradient(110deg,#370c0cee,#951e17d9 44%,#6524110a 80%);border-top:2px solid #fed18c;border-bottom:2px solid #fed18c;box-shadow:0 0 40px #ff784a55;transform:translateX(-120%) skewY(-7deg);pointer-events:none;opacity:0;display:flex;flex-direction:column;justify-content:center;padding-left:12%}.cutin:before{content:"";position:absolute;inset:6px 0;border-block:1px solid #ffc87066;background:repeating-linear-gradient(0deg,transparent 0 5px,#ffb26e0d 6px 7px)}.cutin small{color:#ffcb85;font-size:10px;letter-spacing:.4em;position:relative}.cutin strong{font:900 clamp(34px,6.5vw,78px)/1.4 var(--serif);letter-spacing:.09em;color:#ffedbf;text-shadow:3px 3px #661308,0 0 22px #ffb34a;position:relative}.cutin span{font:14px var(--serif);letter-spacing:.3em;color:#f4cda0;position:relative}.cutin.show{animation:cut-in 2.8s cubic-bezier(.15,.65,.2,1) both}
+  .climax-title{position:absolute;z-index:4;inset:25% 0 auto;display:flex;align-items:center;flex-direction:column;opacity:0;transform:scale(.85);transition:opacity .7s,transform 1.1s;pointer-events:none}.climax-title small{font-size:10px;letter-spacing:.6em;color:#fff0b0;margin-bottom:13px}.climax-title strong{font:900 clamp(42px,8.5vw,104px)/1.3 var(--serif);letter-spacing:.08em;background:linear-gradient(#fffbe3 15%,#fadd8d 42%,#bd7c25 46%,#ffedb2 63%,#e5b557);background-clip:text;-webkit-background-clip:text;color:transparent;filter:drop-shadow(0 3px #512400) drop-shadow(0 0 16px #dfa73888)}.climax-title .win-seal{font:600 15px var(--serif);letter-spacing:.6em;padding:8px 18px 8px 25px;margin-top:15px;background:#9f3426;color:#fff0c2;border:1px solid #efcd87;box-shadow:0 0 30px #e9a63c44}
+  .theater[data-phase="super"]{--accent:#ff9470}.theater[data-phase="climax"]{--accent:#ffe5a0}
+  .theater[data-phase="super"] .title-lockup,.theater[data-phase="climax"] .title-lockup{opacity:0;transform:translateX(-25px)}
+  .theater[data-phase="super"] .reels{opacity:0;transform:translateY(20px)}.theater[data-phase="climax"] .reels{left:50%;bottom:27%;transform:translateX(-50%);opacity:1}.theater[data-phase="climax"] .reel{width:70px;height:85px}.theater[data-phase="climax"] .side-poem{opacity:0}
+  .theater[data-ending="true"] .climax-title{opacity:1;transform:scale(1)}.theater[data-ending="true"] .reels{opacity:0}.theater[data-ending="true"] .screen-copy{bottom:10%}
+  .theater[data-paused="true"] *{animation-play-state:paused!important}
+  .transport{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 0;border-bottom:1px solid var(--line)}.play-group{display:flex;align-items:center;gap:13px}.play{display:flex;align-items:center;justify-content:center;gap:14px;min-width:232px;border:1px solid #f0d28b;background:linear-gradient(110deg,#f2dba2,#ceab62);color:#1c2d22;border-radius:2px;padding:15px 23px;font-size:12px;font-weight:700;letter-spacing:.14em;box-shadow:0 3px 18px #d8b26113;transition:filter .2s,transform .2s}.play:hover{filter:brightness(1.1)}.play:active{transform:translateY(1px)}.play-icon{width:0;height:0;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid #263523}.pause{display:grid;place-items:center;width:46px;height:46px;border:1px solid #cbb17455;background:#132d23;color:#dac492;border-radius:2px;font-size:16px}.replay-note{font-size:9px;color:var(--muted);letter-spacing:.04em}.motion-control{display:flex;align-items:center;gap:8px;font-size:10px;color:#b4c1ae;cursor:pointer;white-space:nowrap}.motion-control input{accent-color:#dec285;width:13px;height:13px;margin:0}
+  .chapters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:34px;padding:24px 0 25px;list-style:none;margin:0}.chapter-card{--chapter-color:#dfbd77;position:relative;color:#6f8b7d}.chapter-card:nth-child(2){--chapter-color:#f19979}.chapter-card:nth-child(3){--chapter-color:#ffe2a0}.chapter-top{display:flex;align-items:center;gap:12px;margin-bottom:12px}.chapter-mark{font:25px var(--serif);color:#859478;width:34px}.chapter-top div{flex:1}.chapter-top small{font-size:8px;letter-spacing:.2em;display:block;margin-bottom:5px}.chapter-top h2{font-size:12px;font-weight:500;letter-spacing:.1em;margin:0}.chapter-state{font-size:8px;letter-spacing:.06em}.progress{height:3px;width:100%;background:#9bb2941c;overflow:hidden}.progress i{display:block;width:100%;height:100%;transform:scaleX(0);transform-origin:left;background:var(--chapter-color);box-shadow:0 0 10px var(--chapter-color);will-change:transform}.chapter-card p{margin:10px 0 0;font-size:9px;letter-spacing:.07em;line-height:1.6}.chapter-card.active{color:#e7dfc7}.chapter-card.active .chapter-mark,.chapter-card.active .chapter-state{color:var(--chapter-color)}.chapter-card.complete{color:#b7bda2}.chapter-card.complete .chapter-mark{color:#cbb274}
+  footer{display:flex;justify-content:space-between;gap:14px;border-top:1px solid var(--line);padding:16px 0 22px;color:#799383;font-size:9px;line-height:1.7;letter-spacing:.08em}footer .signature{color:#abac84;font-family:var(--serif);white-space:nowrap}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+  @keyframes copy-in{from{opacity:0;transform:translateY(12px);filter:blur(5px)}to{opacity:1;transform:translateY(0);filter:blur(0)}}
+  @keyframes reel-flick{0%{transform:translateY(-8px);opacity:.4;filter:blur(2px)}65%{opacity:1}100%{transform:translateY(8px);opacity:.4;filter:blur(2px)}}
+  @keyframes cut-in{0%{opacity:0;transform:translateX(-110%) skewY(-7deg)}12%,76%{opacity:1;transform:translateX(0) skewY(-7deg)}100%{opacity:0;transform:translateX(110%) skewY(-7deg)}}
+  .calm .cutin.show{animation:none;opacity:1;transform:skewY(-7deg)}.calm .reel.spinning span{animation:none}.calm .screen-copy.pop .dialogue{animation:none}.calm .title-lockup,.calm .climax-title,.calm .reels{transition:opacity .5s}
+  @media(min-width:1500px){.shell{width:min(1260px,calc(100% - 100px))}.intro{padding-top:34px}}
+  @media(max-width:760px){.shell{width:calc(100% - 32px)}header{height:69px}.brand-name{font-size:17px}.crest{width:34px;height:34px;font-size:20px}.edition{font-size:8px;letter-spacing:.1em}.edition:before{display:none}.intro{padding:24px 0 19px}.intro h1{font-size:25px}.intro-copy{font-size:9px;max-width:140px}.eyebrow{font-size:8px}.theater{aspect-ratio:4/4.5}.screen-hud{top:23px;left:22px;right:22px;font-size:8px}.live{font-size:8px}.title-lockup{top:17%;left:9%}.machine-logo{font-size:clamp(39px,8vw,60px)}.title-lockup .pretitle{font-size:9px}.logo-en{font-size:7px;letter-spacing:.35em}.title-sub{margin-top:12px;font-size:10px}.title-seal{right:-17px;font-size:8px;top:12px}.side-poem{right:23px;top:27%;font-size:10px}.reels{left:9%;bottom:25%;gap:8px}.reel{width:43px;height:57px}.reel span{font-size:29px}.reels-label{font-size:7px;top:calc(100% + 9px)}.screen-copy{bottom:7%;left:5%;right:5%}.dialogue{font-size:clamp(18px,4.7vw,29px)}.dialogue-note{font-size:8px;letter-spacing:.12em}.cutin{inset:28% -5% 25%;padding-left:11%}.cutin strong{font-size:clamp(36px,10vw,64px)}.cutin small{font-size:8px}.cutin span{font-size:11px}.climax-title{top:31%}.climax-title strong{font-size:clamp(39px,10.5vw,70px)}.climax-title small{font-size:8px;letter-spacing:.4em}.climax-title .win-seal{font-size:12px}.theater[data-phase="climax"] .reels{bottom:26%}.theater[data-phase="climax"] .reel{width:51px;height:64px}.transport{flex-wrap:wrap;gap:15px;padding:18px 0}.play-group{flex:1}.play{min-width:0;flex:1;padding:15px 17px;font-size:11px}.pause{width:44px;flex-shrink:0}.replay-note{display:none}.motion-control{font-size:9px}.chapters{gap:17px;padding:21px 0}.chapter-top{gap:7px;flex-wrap:wrap;margin-bottom:11px}.chapter-mark{font-size:21px;width:23px}.chapter-top small{font-size:6px;letter-spacing:.1em}.chapter-top h2{font-size:10px;letter-spacing:0}.chapter-state{display:none}.chapter-card p{font-size:8px;letter-spacing:0}.signature{display:none}footer{font-size:8px}}
+  @media(max-width:420px){.intro-copy{display:none}.intro h1{font-size:24px}.motion-control{margin-left:auto}.theater{aspect-ratio:3/4}.title-lockup{top:17%}.title-sub{max-width:110px;line-height:1.8}.chapter-top{gap:5px}.chapter-mark{width:20px;font-size:20px}.chapter-top h2{font-size:9px}.chapters{gap:12px}.screen-hud{left:20px;right:20px}.edition{font-size:7px}.machine-logo{font-size:42px}.title-seal{right:-10px}}
+  @media(prefers-reduced-motion:reduce){button{transition:none}.title-lockup,.climax-title,.reels{transition:opacity .5s}}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="brand"><span class="crest" aria-hidden="true">燈</span><div class="brand-name">燈ノ神楽<small>AKARI NO KAGURA</small></div></div>
+    <div class="edition">スーパーリーチ演出デモ</div>
+  </header>
+  <main>
+    <section class="intro" aria-label="作品紹介">
+      <div><p class="eyebrow">A TALE OF MOONLIGHT &amp; MIRACLES</p><h1>月夜を越えて、奇跡を灯せ。</h1></div>
+      <p class="intro-copy">封じられた霊狐が、いま目を覚ます。<br>静寂から覚醒へ。ひとつながりの演出体験。</p>
+    </section>
+    <div class="theater" id="theater" role="button" tabindex="0" aria-label="演出画面。クリックまたはEnterで最初から再生" aria-describedby="screenHelp" data-phase="idle" data-running="false" data-ending="false" data-paused="false">
+      <canvas id="scene" aria-hidden="true">Canvasに対応したブラウザで開いてください。</canvas>
+      <div class="vignette"></div>
+      <div class="screen-hud"><span class="chapter" id="chapterLabel">月影の序章 / PROLOGUE</span><span class="live" id="playState">再生待機</span></div>
+      <div class="title-lockup" aria-hidden="true"><div class="pretitle">月 詠 奇 譚</div><div class="machine-logo">燈<em>ノ</em>神楽</div><span class="title-seal">霊狐覚醒</span><div class="logo-en">AKARI NO KAGURA</div><p class="title-sub">その祈りが、夜を変える。</p></div>
+      <div class="side-poem" aria-hidden="true">幾千の夜を越え、燈は還る。</div>
+      <div class="reels" id="reels" aria-label="演出用の文字図柄"><div class="reel"><span>燈</span></div><div class="reel middle"><span id="middleSymbol">月</span></div><div class="reel"><span>燈</span></div><div class="reels-label" id="reelsLabel">月夜に、燈が重なる。</div></div>
+      <div class="cutin" id="cutin" aria-hidden="true"><small id="cutinSub">THE FOX AWAKENS</small><strong id="cutinTitle">霊狐、覚醒</strong><span id="cutinNote">封印を、解き放て。</span></div>
+      <div class="climax-title" aria-hidden="true"><small>THE MIRACLE BLOOMS</small><strong>奇跡、開花。</strong><span class="win-seal">大当たり</span></div>
+      <div class="screen-copy" id="screenCopy"><div class="dialogue" id="dialogue">眠れる神話に、燈を。</div><div class="dialogue-note" id="dialogueNote">画面をタップして物語をはじめる</div></div>
+    </div>
+    <p id="screenHelp" class="sr-only">演出はノーマルリーチ、スーパーリーチ、クライマックスの順に自動進行します。再生中も画面や再生ボタンで最初から再生できます。</p>
+    <div class="transport">
+      <div class="play-group"><button class="play" id="play" type="button"><span class="play-icon" aria-hidden="true"></span><span id="playText">演出を再生する</span></button><button class="pause" id="pause" type="button" aria-label="一時停止" aria-pressed="false" disabled><span id="pauseIcon" aria-hidden="true">Ⅱ</span></button><span class="replay-note">画面タップでも、はじめから。</span></div>
+      <label class="motion-control"><input type="checkbox" id="calm">光・動きを控えめに</label>
+    </div>
+    <ol class="chapters" aria-label="演出の進行状況">
+      <li class="chapter-card" id="card0"><div class="chapter-top"><span class="chapter-mark" aria-hidden="true">序</span><div><small>NORMAL REACH</small><h2>ノーマルリーチ</h2></div><span class="chapter-state">待機</span></div><div class="progress" role="progressbar" aria-label="ノーマルリーチの進行" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><p>静寂を揺らす、ふたつの燈。</p></li>
+      <li class="chapter-card" id="card1"><div class="chapter-top"><span class="chapter-mark" aria-hidden="true">破</span><div><small>SUPER REACH</small><h2>スーパーリーチ</h2></div><span class="chapter-state">待機</span></div><div class="progress" role="progressbar" aria-label="スーパーリーチの進行" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><p>紅く染まる月。霊狐の覚醒。</p></li>
+      <li class="chapter-card" id="card2"><div class="chapter-top"><span class="chapter-mark" aria-hidden="true">結</span><div><small>CLIMAX</small><h2>クライマックス</h2></div><span class="chapter-state">待機</span></div><div class="progress" role="progressbar" aria-label="クライマックスの進行" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><p>最後の祈りが、奇跡に変わる。</p></li>
+    </ol>
+    <div class="sr-only" id="announcement" role="status" aria-live="polite" aria-atomic="true"></div>
+    <noscript><p>この演出の再生にはJavaScriptを有効にしてください。</p></noscript>
+  </main>
+  <footer><span>オリジナル架空機種「燈ノ神楽」・演出鑑賞専用デモ</span><span class="signature">月に祈りを。夜に燈を。</span></footer>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const theater = $('theater'), canvas = $('scene'), ctx = canvas.getContext('2d');
+  const backdrop = document.createElement('canvas'), bg = backdrop.getContext('2d');
+  if (!ctx || !bg) { $('dialogue').textContent = 'Canvasに対応したブラウザで開いてください。'; $('play').disabled = true; return; }
+  const TAU = Math.PI * 2, clamp = (x, a=0, b=1) => Math.max(a, Math.min(b,x));
+  const ease = x => 1 - Math.pow(1-clamp(x),3);
+  const stages = [
+    { start:0, duration:8, name:'normal', label:'月影の呼応 / NORMAL REACH' },
+    { start:8, duration:9, name:'super', label:'霊狐覚醒 / SUPER REACH' },
+    { start:17, duration:11, name:'climax', label:'祈りの果て / CLIMAX' }
+  ];
+  const cues = [
+    {at:0, text:'ふたつの燈が、呼び合う。', note:'ノーマルリーチ ── 月影に、兆し。'},
+    {at:3.2, text:'この気配は……', note:'封じられた力が、目を覚ます。'},
+    {at:5.6, text:'月の向こうで、何かが動く。', note:'消えない燈が、運命をつなぐ。', cut:'月影、共鳴', sub:'A SIGN IN THE SILENCE', line:'その気配を、見逃すな。'},
+    {at:8, text:'激熱リーチ発展！', note:'スーパーリーチ ── 霊狐、覚醒。', cut:'霊狐、覚醒', sub:'THE FOX AWAKENS', line:'封印を、解き放て。'},
+    {at:11.1, text:'眠れる力を、解き放て！', note:'紅い月の下、神楽がはじまる。'},
+    {at:13.8, text:'この祈り、天まで届け。', note:'境界を越えて、光が走る。', cut:'天を、裂け', sub:'BEYOND THE CRIMSON MOON', line:'夜明けは、この手で。'},
+    {at:17, text:'もう少しで、奇跡が……', note:'クライマックス ── 最後の祈り。'},
+    {at:20, text:'燈よ、消えないで。', note:'闇の向こうへ。あと、少し。'},
+    {at:22.2, text:'いま、すべての想いを。', note:'その一瞬を、見届けよ。', cut:'奇跡を、灯せ', sub:'LET THE LIGHT RETURN', line:'想いよ、ひとつになれ。'},
+    {at:24.3, text:'大当たり', note:'祈りは届き、夜に花が咲く。'},
+    {at:26.2, text:'あなたの祈りが、夜を明かした。', note:'燈ノ神楽 ── 霊狐覚醒の章、完結。'}
+  ];
+  const cards = stages.map((_,i) => ({el:$('card'+i),bar:$('card'+i).querySelector('.progress'),fill:$('card'+i).querySelector('i'),state:$('card'+i).querySelector('.chapter-state')}));
+  let width=0, height=0, dpr=1, mobile=false, playing=false, paused=false, finished=false;
+  let elapsed=0, ambient=0, lastFrame=0, frameId=null, lastRestart=-Infinity, cueIndex=-1, phaseIndex=-1;
+  let calm=matchMedia('(prefers-reduced-motion: reduce)').matches, lastUI=-1;
+  $('calm').checked=calm; theater.classList.toggle('calm',calm);
+  // A single animation owner: restarting resets this state; it never creates a timer or another loop.
+  const motes = Array.from({length:115},(_,i) => ({x:((i*73.137)%101)/101,y:((i*31.71)%97)/97,r:.6+(i%5)*.45,s:.02+(i%7)*.008,phase:i*2.39996}));
+  const sparks = Array.from({length:76},(_,i) => ({angle:i*2.39996,length:.2+(i%11)*.065,speed:.45+(i%9)*.085}));
+  const rings = [1,1.09,1.17];
+  function path(c,points,fill,stroke,line=1) {
+    c.beginPath(); points.forEach((p,i) => i ? c.lineTo(p[0],p[1]) : c.moveTo(p[0],p[1])); c.closePath();
+    if(fill){c.fillStyle=fill;c.fill();} if(stroke){c.strokeStyle=stroke;c.lineWidth=line;c.stroke();}
+  }
+  function circle(c,x,y,r,fill,stroke,line=1) {
+    c.beginPath();c.arc(x,y,Math.max(0,r),0,TAU);
+    if(fill){c.fillStyle=fill;c.fill();}if(stroke){c.strokeStyle=stroke;c.lineWidth=line;c.stroke();}
+  }
+  function glow(c,x,y,r,color,alpha=1) {
+    const gradient=c.createRadialGradient(x,y,0,x,y,r);gradient.addColorStop(0,color);gradient.addColorStop(1,'transparent');
+    c.save();c.globalAlpha=alpha;c.fillStyle=gradient;c.fillRect(x-r,y-r,r*2,r*2);c.restore();
+  }
+  function torii(c,x,y,size,alpha) {
+    c.save();c.translate(x,y);c.scale(size,size);c.globalAlpha=alpha;
+    path(c,[[-100,-105],[-78,-91],[78,-91],[100,-105],[95,-89],[62,-79],[-62,-79],[-95,-89]],'#092820','#ba9a5066',1);
+    path(c,[[-87,-70],[87,-70],[86,-61],[-86,-61]],'#ac874488');
+    path(c,[[-66,-86],[-52,-86],[-49,65],[-69,65]],'#123327','#ba9a5066');
+    path(c,[[52,-86],[66,-86],[69,65],[49,65]],'#123327','#ba9a5066');
+    path(c,[[-84,-26],[84,-26],[84,-17],[-84,-17]],'#123327','#b3914955');
+    c.strokeStyle='#c9b06b66';c.lineWidth=1.5;c.beginPath();c.moveTo(-56,-61);c.quadraticCurveTo(0,-25,56,-61);c.stroke();
+    for(let i=-2;i<=2;i++){path(c,[[i*18,-39-Math.abs(i)*3],[i*18+3,-32-Math.abs(i)*3],[i*18-1,-24-Math.abs(i)*3],[i*18+4,-18-Math.abs(i)*3]],'#bdb78c88');}
+    c.restore();
+  }
+  function paintBackdrop() {
+    bg.setTransform(dpr,0,0,dpr,0,0);
+    const g=bg.createLinearGradient(0,0,width,height);g.addColorStop(0,'#08221e');g.addColorStop(.45,'#123f32');g.addColorStop(1,'#041815');bg.fillStyle=g;bg.fillRect(0,0,width,height);
+    const cx=width*(mobile?.65:.67),cy=height*.39,r=Math.min(width*.235,height*.39);
+    glow(bg,cx,cy,r*1.65,'#82ad6325');
+    const moon=bg.createRadialGradient(cx-r*.35,cy-r*.4,0,cx,cy,r);moon.addColorStop(0,'#98b08d');moon.addColorStop(.7,'#6d9578');moon.addColorStop(1,'#234f3f');
+    circle(bg,cx,cy,r,moon,'#c3ba7980',1);
+    bg.save();bg.beginPath();bg.arc(cx,cy,r,0,TAU);bg.clip();
+    for(let i=0;i<80;i++){let mx=cx+Math.sin(i*42.2)*r,my=cy+Math.cos(i*22.7)*r;circle(bg,mx,my,r*(.03+(i%6)*.012),'#203e2720');}
+    for(let i=0;i<55;i++){bg.strokeStyle='#eeedb909';bg.beginPath();bg.moveTo(cx-r,cy-r+i*r/25);bg.lineTo(cx+r,cy-r+i*r/25);bg.stroke();}bg.restore();
+    for(let layer=0;layer<3;layer++){
+      const base=height*(.61+layer*.10),points=[[0,height],[0,base]];
+      for(let i=0;i<=20;i++)points.push([width*i/20,base-Math.sin(i*1.7+layer)*height*.035-Math.sin(i*.9)*height*.045]);
+      points.push([width,height]);path(bg,points,['#143c2f','#0c2e25','#07251e'][layer]);
+    }
+    torii(bg,width*.12,height*.75,width/(mobile?410:940),.7);
+    torii(bg,width*.92,height*.79,width/(mobile?750:1500),.65);
+    // Fine seigaiha waves etched into the mist.
+    bg.save();bg.strokeStyle='#b6ae6320';bg.lineWidth=.7;
+    for(let row=0;row<4;row++)for(let col=-1;col<13;col++)for(let radius=12;radius<=36;radius+=8){bg.beginPath();bg.arc(col*80+(row%2)*40,height*.85+row*24,radius,Math.PI,TAU);bg.stroke();}
+    bg.restore();
+    // Hanging lanterns and handmade paper ornaments.
+    [width*.055,width*.88].forEach((x,i)=>{const y=height*(i?.22:.19);bg.strokeStyle='#b4a26066';bg.beginPath();bg.moveTo(x,0);bg.lineTo(x,y);bg.stroke();glow(bg,x,y+13,34,'#f9c77222');path(bg,[[x-9,y],[x+9,y],[x+12,y+22],[x,y+29],[x-12,y+22]],'#c9a65a33','#eac77d70');});
+  }
+  function resize() {
+    const rect=theater.getBoundingClientRect();width=rect.width;height=rect.height;mobile=width<720;
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);backdrop.width=canvas.width;backdrop.height=canvas.height;
+    paintBackdrop();
+  }
+  // Hand-drawn lacquer fox mask. Every contour, inlay and tassel is a Canvas path.
+  function fox(x,y,size,power,t) {
+    ctx.save();ctx.translate(x,y);ctx.scale(size,size);
+    const metal=ctx.createLinearGradient(-100,-150,110,150);metal.addColorStop(0,'#fff2c4');metal.addColorStop(.3,'#d0a957');metal.addColorStop(.5,'#fff0b8');metal.addColorStop(1,'#98672d');
+    const ivory=ctx.createLinearGradient(-90,-80,100,160);ivory.addColorStop(0,'#f9f0cc');ivory.addColorStop(.4,'#d9dbc1');ivory.addColorStop(.7,'#8ba996');ivory.addColorStop(1,'#2a5b47');
+    const dark=power>.4?'#6e201b':'#0c4234';
+    // Flame-shaped tails fan behind the mask.
+    for(let i=0;i<7;i++){
+      ctx.save();ctx.rotate((i-3)*.32);ctx.globalAlpha=.3+power*.25;
+      ctx.beginPath();ctx.moveTo(-12,94);ctx.bezierCurveTo(-145,40,-162,-45,-96,-143);ctx.bezierCurveTo(-135,-50,8,-12,21,88);ctx.closePath();ctx.fillStyle=dark;ctx.fill();ctx.strokeStyle=metal;ctx.lineWidth=.8;ctx.stroke();ctx.restore();
+    }
+    ctx.shadowColor=power>.4?'#f67c39':'#cdb96b';ctx.shadowBlur=15;
+    path(ctx,[[-91,-17],[-122,-153],[-70,-115],[-29,-63],[29,-63],[70,-115],[122,-153],[91,-17],[109,37],[72,94],[0,154],[-72,94],[-109,37]],ivory,metal,3);
+    ctx.shadowBlur=0;
+    path(ctx,[[-101,-119],[-84,-33],[-45,-67],[-73,-99]],dark,metal,1.5);
+    path(ctx,[[101,-119],[84,-33],[45,-67],[73,-99]],dark,metal,1.5);
+    path(ctx,[[-91,-18],[-73,-53],[-38,-58],[0,-41],[-14,4],[-58,4],[-103,34]],'#f0e8c9');
+    path(ctx,[[91,-18],[73,-53],[38,-58],[0,-41],[14,4],[58,4],[103,34]],'#b8cdb5');
+    path(ctx,[[0,-59],[-17,-31],[0,-5],[17,-31]],dark,metal,1.4);
+    path(ctx,[[0,-46],[-5,-30],[0,-21],[5,-30]],metal);
+    for(let sign of [-1,1]){
+      ctx.save();ctx.scale(sign,1);
+      path(ctx,[[16,15],[72,-6],[93,7],[73,34],[39,32]],dark,metal,1.4);
+      ctx.shadowColor=power>.4?'#ffb45d':'#eff2a3';ctx.shadowBlur=11+power*15;
+      path(ctx,[[28,18],[78,9],[65,21],[39,24]],power>.4?'#ffe7a0':'#e9e2a3');ctx.shadowBlur=0;
+      path(ctx,[[74,40],[95,30],[77,60],[48,77],[59,56]],dark);
+      path(ctx,[[79,67],[55,96],[23,117],[51,77]],'#ac793e');
+      ctx.strokeStyle=metal;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(47,43);ctx.quadraticCurveTo(35,63,19,76);ctx.stroke();
+      ctx.strokeStyle='#b18643';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(107,11);ctx.quadraticCurveTo(143,27,113,100);ctx.stroke();
+      circle(ctx,115,96,6,metal,'#efe0a2');
+      const sway=calm?0:Math.sin(t*1.3)*4;
+      path(ctx,[[111,103],[120,103],[125+sway,151],[110+sway,147]],dark,metal,1);
+      for(let j=0;j<4;j++){ctx.beginPath();ctx.moveTo(113+j*2,107);ctx.lineTo(112+sway+j*3,149);ctx.strokeStyle='#d6ad6099';ctx.lineWidth=.7;ctx.stroke();}
+      ctx.restore();
+    }
+    path(ctx,[[-13,69],[0,65],[13,69],[0,82]],'#14392e',metal,1.2);
+    ctx.beginPath();ctx.moveTo(-25,102);ctx.quadraticCurveTo(0,117,25,102);ctx.strokeStyle='#325741';ctx.lineWidth=2;ctx.stroke();
+    path(ctx,[[0,118],[-9,130],[0,139],[9,130]],metal);
+    // A gold crown and suspended moon jewel.
+    path(ctx,[[-44,-66],[-55,-91],[-22,-82],[0,-108],[22,-82],[55,-91],[44,-66],[0,-54]],dark,metal,2);
+    circle(ctx,0,-77,9,metal);circle(ctx,0,-80,6,dark);
+    ctx.restore();
+  }
+  function magicRing(x,y,r,t,power) {
+    ctx.save();ctx.translate(x,y);ctx.rotate(calm?0:t*(power>.3?.1:.025));
+    rings.forEach((s,i)=>{ctx.globalAlpha=.34+i*.12;circle(ctx,0,0,r*s,null,power>.5?'#ffd288':'#d2c782',i===1?1.5:.7);});
+    ctx.globalAlpha=.65;ctx.strokeStyle=power>.5?'#ffca81':'#c7bf7c';ctx.lineWidth=1;
+    for(let i=0;i<60;i++){let a=i/60*TAU,inner=r*(i%5===0?1.10:1.13);ctx.beginPath();ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);ctx.lineTo(Math.cos(a)*r*1.17,Math.sin(a)*r*1.17);ctx.stroke();}
+    for(let i=0;i<8;i++){ctx.save();ctx.rotate(i*TAU/8);path(ctx,[[-4,-r*1.21],[0,-r*1.25],[4,-r*1.21],[0,-r*1.17]],'#e2cc8988');ctx.restore();}
+    ctx.rotate(-t*.035);ctx.setLineDash([r*.2,r*.055,r*.02,r*.055]);circle(ctx,0,0,r*1.27,null,'#e2cc8955',.7);ctx.setLineDash([]);ctx.restore();
+  }
+  function drawMotes(t,power,ending) {
+    ctx.save();ctx.globalCompositeOperation='screen';
+    const count=calm?26:Math.round(48+power*60);
+    for(let i=0;i<count;i++){
+      const p=motes[i],speed=calm?.12:1;
+      const x=(p.x*width+Math.sin(t*.35+p.phase)*22+width)%width;
+      const y=((p.y-t*p.s*speed*(1+power))%1+1)%1*height;
+      ctx.globalAlpha=(.25+.5*Math.pow(Math.sin(p.phase+t*.5),2))*(ending?1:.7);
+      const color=ending?'#ffe1a0':power>.3?(i%3?'#ffbd72':'#ee775b'):(i%3?'#e6d8a0':'#9bdec4');
+      if(i%4===0){ctx.save();ctx.translate(x,y);ctx.rotate(t*.3+p.phase);path(ctx,[[0,-p.r*3],[p.r*1.5,0],[0,p.r*3],[-p.r,0]],color);ctx.restore();}
+      else circle(ctx,x,y,p.r,color);
+    }
+    ctx.restore();
+  }
+  function draw() {
+    ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);ctx.drawImage(backdrop,0,0,width,height);
+    const t=ambient, e=elapsed, hasStory=playing||finished, superPhase=e>=8&&hasStory, climax=e>=17&&hasStory, ending=e>=24.3&&hasStory;
+    const power=playing||finished?(e<8?e/8*.2:e<17?.45+(e-8)/9*.35:ending?1:.75):0;
+    let x=width*(mobile?.65:.67),y=height*(mobile?.49:.43);
+    let unit=Math.min(width*(mobile?.0015:.00088),height*.00155);
+    if(superPhase){x=width*(mobile?.59:.64);unit*=1.13;}
+    if(climax){x=width*.5;y=height*.43;unit*=.87;}
+    let float=calm?0:Math.sin(t*.8)*5;
+    if(power>.3){ctx.save();ctx.globalCompositeOperation='screen';glow(ctx,x,y,width*.6,ending?'#e8ad3b66':climax?'#c7972344':'#d83d254d',1);ctx.restore();}
+    if(superPhase&&!climax){ctx.fillStyle='#a820171c';ctx.fillRect(0,0,width,height);}
+    // Mist ribbons become a vortex, then a sunburst.
+    ctx.save();ctx.globalCompositeOperation='screen';
+    for(let i=0;i<(calm?3:7);i++){
+      ctx.beginPath();ctx.strokeStyle=power>.3?'#f7b561':'#8db496';ctx.globalAlpha=.045+power*.022;ctx.lineWidth=8+i*2;
+      let offset=Math.sin(t*.2+i)*height*.05;
+      ctx.moveTo(-width*.1,height*(.61+i*.036)+offset);ctx.bezierCurveTo(width*.3,height*.3+offset,width*.5,height*1.1,width*1.1,height*(.46+i*.033)+offset);ctx.stroke();
+    }
+    ctx.restore();
+    const conceal=climax&&!ending?clamp((e-18)/4)*.7:ending?.76:0;
+    ctx.save();ctx.globalAlpha=1-conceal;
+    magicRing(x,y,unit*162,t,power);
+    if(!ending)fox(x,y+float,unit,power,t);
+    ctx.restore();
+    // Fast radial brush strokes and a sweeping energy blade distinguish the development.
+    if(superPhase&&!ending&&!calm){
+      ctx.save();ctx.globalCompositeOperation='screen';
+      for(let i=0;i<42;i++){
+        const a=i*2.39996+t*.07,r=(.2+((t*.5+i*.137)%1)*.72)*Math.max(width,height);
+        ctx.globalAlpha=.09+power*.1;ctx.strokeStyle=i%3?'#efc075':'#e27352';ctx.lineWidth=i%5===0?2:1;ctx.beginPath();ctx.moveTo(x+Math.cos(a)*r,y+Math.sin(a)*r);ctx.lineTo(x+Math.cos(a)*(r+width*.12),y+Math.sin(a)*(r+width*.12));ctx.stroke();
+      }
+      if(e<17){const a=(e-8)*1.5;ctx.translate(x,y);ctx.rotate(a);ctx.scale(1,.34);ctx.beginPath();ctx.ellipse(0,0,unit*228,unit*228,0,.12,Math.PI*1.6);ctx.strokeStyle='#ffe6a6';ctx.lineWidth=4;ctx.shadowColor='#ff9d48';ctx.shadowBlur=18;ctx.stroke();}
+      ctx.restore();
+    }
+    // A held breath: the scene closes around a growing light before its release.
+    if(climax&&!ending){
+      const charge=clamp((e-17)/7.3),r=unit*(140-charge*58);
+      ctx.fillStyle=`rgba(1,13,12,${charge*.43})`;ctx.fillRect(0,0,width,height);
+      magicRing(x,y,r,t*(calm?0:1+charge*2),1);
+      glow(ctx,x,y,r*.8,'#ffdd8877',.4+charge*.6);
+      if(e>21){ctx.save();ctx.translate(x,y);ctx.strokeStyle='#fff0ae';ctx.lineWidth=1.4;ctx.shadowColor='#ffd065';ctx.shadowBlur=calm?0:14;for(let i=0;i<6;i++){let a=i*TAU/6;ctx.beginPath();ctx.moveTo(Math.cos(a)*r*.8,Math.sin(a)*r*.8);ctx.lineTo(Math.cos(a+.09)*r*1.02,Math.sin(a+.09)*r*1.02);ctx.lineTo(Math.cos(a)*r*1.3,Math.sin(a)*r*1.3);ctx.stroke();}ctx.restore();}
+    }
+    if(ending){
+      const bloom=ease((e-24.3)/2);
+      ctx.save();ctx.translate(x,y);ctx.globalCompositeOperation='screen';
+      for(let i=0;i<36;i++){
+        const a=i*TAU/36+(calm?0:t*.018),r=Math.max(width,height)*(.6+bloom*.25);
+        ctx.save();ctx.rotate(a);const beam=ctx.createLinearGradient(0,0,0,-r);beam.addColorStop(0,'#ffe5a173');beam.addColorStop(1,'#b9901600');path(ctx,[[0,0],[-r*.032,-r],[r*.032,-r]],beam);ctx.restore();
+      }
+      ctx.restore();glow(ctx,x,y,width*.6,'#e2bd5040');
+      magicRing(x,y,unit*186,t*.4,1);
+      if(!calm){ctx.save();ctx.globalCompositeOperation='screen';sparks.forEach(p=>{const age=(e-24.3)*p.speed,r=age*Math.min(width,height)*.4;ctx.globalAlpha=clamp(1-age/4)*.8;ctx.strokeStyle='#ffdda0';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(x+Math.cos(p.angle)*r,y+Math.sin(p.angle)*r+age*age*12);ctx.lineTo(x+Math.cos(p.angle)*(r-15),y+Math.sin(p.angle)*(r-15)+age*age*12);ctx.stroke();});ctx.restore();}
+    }
+    drawMotes(t,power,ending);
+    // A graphic close-up slides across each cut-in, in sync with its typographic strip.
+    if(playing&&cueIndex>=0&&cues[cueIndex].cut){
+      const age=e-cues[cueIndex].at;
+      if(age<2.8){ctx.save();ctx.globalAlpha=calm?.7:clamp(age/.25)*clamp((2.8-age)/.5);ctx.beginPath();ctx.moveTo(0,height*.29);ctx.lineTo(width,height*.16);ctx.lineTo(width,height*.68);ctx.lineTo(0,height*.81);ctx.clip();const slide=calm?0:(1-ease(age/.45))*width*.3;fox(width*.75+slide,height*.48,unit*1.65,1,t);ctx.restore();}
+    }
+    // Single soft flashes on story beats, no continuous strobing.
+    if(playing&&!calm){
+      for(const beat of [8,13.8,17,22.2,24.3]){
+        const age=e-beat;
+        if(age>=0&&age<.7){ctx.fillStyle=`rgba(255,231,177,${Math.pow(1-age/.7,3)*(beat===24.3?.8:.45)})`;ctx.fillRect(0,0,width,height);}
+      }
+      const impact=[8,13.8,24.3].some(beat=>e>=beat&&e<beat+.35);
+      canvas.style.transform=impact?`translate(${Math.sin(e*92)*3}px,${Math.cos(e*77)*2}px)`:'none';
+    } else canvas.style.transform='none';
+  }
+  function applyCue(index) {
+    cueIndex=index;const cue=cues[index];
+    $('dialogue').textContent=cue.text;$('dialogueNote').textContent=cue.note;
+    $('screenCopy').classList.remove('pop');void $('screenCopy').offsetWidth;$('screenCopy').classList.add('pop');
+    $('cutin').classList.remove('show');
+    if(cue.cut){$('cutinTitle').textContent=cue.cut;$('cutinSub').textContent=cue.sub;$('cutinNote').textContent=cue.line;void $('cutin').offsetWidth;$('cutin').classList.add('show');}
+    $('announcement').textContent=cue.text+' '+cue.note;
+  }
+  function updateUI(force=false) {
+    const current=elapsed<8?0:elapsed<17?1:2;
+    if(current!==phaseIndex||force){
+      phaseIndex=current;theater.dataset.phase=stages[current].name;$('chapterLabel').textContent=stages[current].label;
+      cards.forEach((card,i)=>{card.el.classList.toggle('active',i===current&&!finished);card.el.classList.toggle('complete',i<current||finished);card.state.textContent=i<current||finished?'完結':i===current?'進行中':'待機';});
+    }
+    for(let i=cues.length-1;i>=0;i--)if(elapsed>=cues[i].at){if(i!==cueIndex)applyCue(i);break;}
+    if(cueIndex>=0&&elapsed-cues[cueIndex].at>=2.8)$('cutin').classList.remove('show');
+    const ending=elapsed>=24.3;theater.dataset.ending=String(ending);
+    const middle=$('middleSymbol');
+    const spin=playing&&!finished&&!ending;
+    middle.parentElement.classList.toggle('spinning',spin&&!paused);
+    const symbol=ending?'燈':['月','祈','夢','宵','燈','夜'][Math.floor(elapsed/(calm?.65:.13))%6];
+    if(middle.textContent!==symbol)middle.textContent=symbol;
+    middle.parentElement.style.opacity=ending?'1':'';
+    $('reelsLabel').textContent=current===2?'想いよ、ひとつになれ。':'月夜に、燈が重なる。';
+    cards.forEach((card,i)=>{const p=clamp((elapsed-stages[i].start)/stages[i].duration);card.fill.style.transform=`scaleX(${p})`;const value=String(Math.round(p*100));if(card.bar.getAttribute('aria-valuenow')!==value)card.bar.setAttribute('aria-valuenow',value);});
+  }
+  function start() {
+    const now=performance.now();
+    if(now-lastRestart<450)return; // Absorb double taps; a later click deliberately restarts.
+    lastRestart=now;elapsed=0;playing=true;paused=false;finished=false;lastFrame=now;lastUI=-1;phaseIndex=-1;cueIndex=-1;
+    theater.dataset.running='true';theater.dataset.paused='false';theater.dataset.ending='false';
+    $('pause').disabled=false;$('pause').setAttribute('aria-label','一時停止');$('pause').setAttribute('aria-pressed','false');$('pauseIcon').textContent='Ⅱ';
+    $('playText').textContent='最初から再生';$('playState').textContent='演出再生中';
+    $('cutin').classList.remove('show');updateUI(true);schedule();
+  }
+  function finish() {
+    elapsed=28;finished=true;playing=false;paused=false;theater.dataset.running='false';
+    $('playState').textContent='演出完結';$('playText').textContent='もう一度、演出を再生';$('pause').disabled=true;
+    updateUI(true);$('announcement').textContent='大当たり。奇跡、開花。演出が完結しました。再生ボタンで、もう一度お楽しみください。';
+  }
+  function frame(now) {
+    frameId=null;if(document.hidden){lastFrame=0;return;}
+    const dt=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;
+    if(!paused){ambient+=dt;if(playing){elapsed=Math.min(28,elapsed+dt);if(elapsed>=28)finish();if(now-lastUI>32){updateUI();lastUI=now;}}}
+    draw();schedule();
+  }
+  function schedule(){if(frameId===null&&!document.hidden)frameId=requestAnimationFrame(frame);}
+  $('play').addEventListener('click',start);
+  theater.addEventListener('click',start);
+  theater.addEventListener('keydown',event=>{if((event.key==='Enter'||event.key===' ')&&!event.repeat){event.preventDefault();start();}});
+  $('pause').addEventListener('click',()=>{
+    if(!playing)return;paused=!paused;theater.dataset.paused=String(paused);$('pause').setAttribute('aria-label',paused?'再生を続ける':'一時停止');$('pause').setAttribute('aria-pressed',String(paused));$('pauseIcon').textContent=paused?'▷':'Ⅱ';$('playState').textContent=paused?'一時停止中':'演出再生中';lastFrame=performance.now();
+  });
+  $('calm').addEventListener('change',()=>{calm=$('calm').checked;theater.classList.toggle('calm',calm);canvas.style.transform='none';});
+  document.addEventListener('visibilitychange',()=>{lastFrame=0;if(document.hidden){if(frameId!==null)cancelAnimationFrame(frameId);frameId=null;}else schedule();});
+  new ResizeObserver(resize).observe(theater);
+  resize();schedule();
+})();
+</script>
+</body>
+</html>
